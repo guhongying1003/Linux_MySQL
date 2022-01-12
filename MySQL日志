@@ -1,0 +1,300 @@
+### 1. 错误日志
+
+#### 1.1 介绍
+
+```markdown
+MySQL错误日志记录着mysqld进程运行中的重要信息, 包括mysqld启动和关闭事件, 还包括在启动和关闭期间以及运行期发生的错误, 警告和说明等诊断信息. 例如: 如果mysqld发现一个表需要自动检查或修复, 它会将一条消息写入错误日志.
+```
+
+#### 1.2 与错误日志相关的常用参数
+
+```shell
+mysql> show variables like 'log_error%';
+```
+
+```shell
+(root@localhost) [test]> show variables like 'log_error%';
++----------------------------+----------------------------------------+
+| Variable_name              | Value                                  |
++----------------------------+----------------------------------------+
+| log_error                  | ./error.log                            |
+| log_error_services         | log_filter_internal; log_sink_internal |
+| log_error_suppression_list |                                        |
+| log_error_verbosity        | 2                                      |
++----------------------------+----------------------------------------+
+4 rows in set (0.00 sec)
+
+log_error : 错误日志文件名
+log_error_services : 错误日志相关组件
+log_error_suppression_list : 不记录错误日志的错误号
+log_error_verbosity : 错误日志详细程度
+```
+
+##### 1.2.1 错误日志的内置组件
+
+```shell
+MySQL记录错误日志功能是由组件(component)完成的, 组件有两类:
+一类是过滤组件(filter)组件.
+另一类是写(sink或writer)组件.
+
+系统参数log_error_services控制激活哪些组件用于错误日志的记录,默认值如下:
+(root@localhost) [test]> show variables like 'log_error_services';
++--------------------+----------------------------------------+
+| Variable_name      | Value                                  |
++--------------------+----------------------------------------+
+| log_error_services | log_filter_internal; log_sink_internal |
++--------------------+----------------------------------------+
+1 row in set (0.00 sec)
+```
+
+##### 1.2.2 系统参数log_error_verbosity
+
+```shell
+MySQL日志事件的优先级分三级,分别是: ERROR,WARNING和NOTE,系统参数log_error_verbosity的值和日志事件优先级的对应关系如下:
+```
+
+| 系统参数 |     日志事件优先级     |
+| :------: | :--------------------: |
+|    1     |         ERROR          |
+|    2     |     ERROR , WARING     |
+|    3     | ERROR , WARNING , NOTE |
+
+log_error_verbosity 默认设置是2, 推荐设置成3.
+
+MySQL日志事件的优先级分四级, 除了表中列出的3级外, 还有SYSTEM级别的信息, 此类信息不受系统参数log_error_verbosity的控制.
+
+
+
+##### 1.2.3 系统参数log_error_suppression_list
+
+```shell
+系统参数log_error_suppression_list可以用来屏蔽某个具体的错误事件, 例如 下面的设置将不会记录错误号为"MY-010926" 的错误事件:
+
+(root@localhost) [test]> set global log_error_suppression_list='MY-010926';
+Query OK, 0 rows affected (0.01 sec)
+
+这样设置了以后,错误日志中将不会出现类型下面的信息:
+
+这个参数只对WARNING和NOTE类型的错误事件起作用, 对ERROR和SYSTEM类型的信息不起作用.
+```
+
+#### 1.3 错误日志的外置组件
+
+```shell
+红帽平台下外置组件的位置:
+# ls /usr/lib64/mysql/plugin/component_log_*
+
+log_filter_dragnet组件对错误事件的过滤基于用户定义的规则
+log_sink_json日志写入组件会以json格式记录错误日志
+log_sink_syseventlog组件会将错误日志记录到操作系统的系统日志中. Windows系统记录到事件日志, UNIx和Linux系统记录到syslog中.
+
+外置组件需要先载入, 例如:
+mysql> install component 'file://component_log_filter_dragnet';
+```
+
+#### 1.4 各类组件的组合
+
+```shell
+系统参数log_error_services控制错误日志的组件组合, 默认是log_filter_internal;log_sink_internal.
+不能只指定一个日志过滤组件,而不指定写组件,例如:
+mysql> set global log_error_services='log_filter_internal';
+但可以只指定写组件:
+mysql> set global log_error_services='log_sink_internal';
+还可以指定多个日志写组件
+mysql> set global log_error_services='log_filter_internal;log_sink_internal;log_sink_syseventlog';
+
+系统参数log_error_services中记录的组件顺序也很重要,因为执行组件过程是从左向右进行执行,
+例如:
+logs_filter_internal;log_sink_1;log_sink_2; -- 过滤, 写
+又如:
+log_sink_1;log_filter_internal;log_sink_2; -- 完整写 过滤  写
+```
+
+
+
+#### 1.5 系统参数log_timestamps
+
+```shell
+系统参数log_timestamps变量控制写入错误日志,通用查询日志和慢速查询日志中的时间戳格式.
+这个参数可以设置成UTC或SYSTEM, 默认是UTC, 下面语句将参数设置成SYSTEM:
+mysql> set global log_timestamps='SYSTEM'; 
+
+错误日志中默认记录的是UTC时间,对于中国用户来说,加8个小时就是当地时间了.
+```
+
+
+
+#### 1.6 错误日志备份
+
+```shell
+备份错误日志的方法如下:
+$ mv /var/log/mysql/error.log /var/log/mysql/error.log.err-old
+$ mysqladmin flush-logs
+
+其中mysqladmin flush-logs相当于下面六个命令:
+flush binary logs
+flush engine logs
+flush error logs
+flush general logs
+flush relay logs
+flush slow logs
+```
+
+
+
+#### 1.7 错误日志记录到数据库中
+
+```shell
+错误日志写入组件log_sink_internal和log_sink_json在把错误日志信息记录到系统参数log_error指定的文件中的同时, 还会同时记录到performance_schema数据库的error_log表中, 与这个表相关的状态参数如下:
+(root@localhost) [(none)]> show status like 'error_log_%';
++---------------------------+------------------+
+| Variable_name             | Value            |
++---------------------------+------------------+
+| Error_log_buffered_bytes  | 68560            |
+| Error_log_buffered_events | 476              |
+| Error_log_expired_events  | 0                |
+| Error_log_latest_write    | 1640930864577536 |
++---------------------------+------------------+
+4 rows in set (0.01 sec)
+
+查看这个表信息的例子:
+(root@localhost) [(none)]> select * from performance_schema.error_log limit 3\G;
+*************************** 1. row ***************************
+    LOGGED: 2021-11-01 14:36:04.223655
+ THREAD_ID: 0
+      PRIO: System
+ERROR_CODE: MY-013169
+ SUBSYSTEM: Server
+      DATA: /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64/bin/mysqld (mysqld 8.0.24) initializing of server in progress as process 3186
+*************************** 2. row ***************************
+    LOGGED: 2021-11-01 14:36:04.235835
+ THREAD_ID: 1
+      PRIO: System
+ERROR_CODE: MY-013576
+ SUBSYSTEM: InnoDB
+      DATA: InnoDB initialization has started.
+*************************** 3. row ***************************
+    LOGGED: 2021-11-01 14:36:04.625723
+ THREAD_ID: 1
+      PRIO: System
+ERROR_CODE: MY-013577
+ SUBSYSTEM: InnoDB
+      DATA: InnoDB initialization has ended.
+3 rows in set (0.00 sec)
+```
+
+
+
+
+
+------
+
+
+
+### 2. 通用查询日志
+
+#### 2.1 介绍
+
+```markdown
+通用查询日志记录着mysqld正在做什么, 当客户端连接或断开连接时, 服务器将信息写入到此日志中, 并记录从客户端接受的每个SQL语句.查看通用查询日志可以知道客户端发送给mysqld的确切内容.
+
+相关参数:
+log_output : 指定慢查询日志和通用查询日志的记录位置: FILE,TABLE,FILE,NONE.
+general_log : 可以设定为on(1) 或off(0),分别表示打开或关闭通用查询日志,默认值是off, 可以动态设置.
+general_log_file : 指定通用查询日志的文件名, 默认文件名是<hostname>.log
+sql_log_off : 指定当通过查询日志激活时当前会话是否记录通用查询日志,当设置为off时进行记录,这也是默认值,为on时不记录.
+```
+
+```shell
+(root@localhost) [(none)]> show variables like 'log_output';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| log_output    | FILE  |
++---------------+-------+
+1 row in set (0.00 sec)
+
+-- 默认是关闭的
+(root@localhost) [(none)]> show variables like 'general_log%';
++------------------+----------------------------------+
+| Variable_name    | Value                            |
++------------------+----------------------------------+
+| general_log      | OFF                              |
+| general_log_file | /mydata/mysql_data/centos_04.log |
++------------------+----------------------------------+
+2 rows in set (0.00 sec)
+
+-- 设置为on
+(root@localhost) [(none)]> set global general_log=on;
+Query OK, 0 rows affected (0.02 sec)
+
+-- 再执行查询时,通用日志会记录查询
+2021-12-31T15:56:21.140245+08:00	   15 Query	select * from test.t
+
+-- 设置 sql_log_off=1; 时通用日志不再记录查询信息,针对当前会话
+```
+
+#### 2.2 文件记录的内容
+
+```shell
+通用查询日志记录在general_log_file指定的文件中,下面是记录内容的一个例子:
+2021-12-31T16:01:55.595249+08:00	   17 Query	select * from test.t
+
+通用查询日志内的记录可以方便地用于检测工具内部执行SQL语句,例如执行:
+$ mysqladmin extended-status
+
+在通过查询日志里会有下面三条记录:
+2021-12-31T16:05:10.430319+08:00	   18 Connect	root@localhost on  using Socket
+2021-12-31T16:05:10.430542+08:00	   18 Query	show /*!50002 GLOBAL */ status
+2021-12-31T16:05:10.481835+08:00	   18 Quit
+```
+
+
+
+#### 2.2 表记录的内容
+
+```shell
+当系统参数log_output的设置中有table时,通用查询日志还可以记录在mysql.general_log 表中,查询这个表的结构,
+(root@localhost) [(none)]> show create table mysql.general_log \G;
+*************************** 1. row ***************************
+       Table: general_log
+Create Table: CREATE TABLE `general_log` (
+  `event_time` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `user_host` mediumtext NOT NULL,
+  `thread_id` bigint unsigned NOT NULL,
+  `server_id` int unsigned NOT NULL,
+  `command_type` varchar(64) NOT NULL,
+  `argument` mediumblob NOT NULL
+) ENGINE=CSV DEFAULT CHARSET=utf8mb3 COMMENT='General log'
+1 row in set (0.00 sec)
+
+可以看到这个表使用的是CSV引擎,这样数据可以方便的导入到 windows access 中,但需要注意这种引擎是没有索引的,这样在查询时不一定很快.
+
+使用下面的目录查询线程65执行的命令,按时间倒序进行列出:
+mysql> select event_time,user_host,thread_id,server_id,command_type,convert(argument using utf8mb4) from mysql.general_log where thread_id=65 order by event_time desc \G;
+```
+
+
+
+
+
+
+
+------
+
+
+
+### 3. 慢查询日志
+
+#### 3.1 与慢查询日志相关的参数
+
+#### 3.2 慢查询日志记录到文件和表
+
+#### 3.3 Slow_queries状态参数
+
+#### 3.4 两个摘要函数
+
+#### 3.5 mysqldumpslow工具
+
+
+
