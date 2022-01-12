@@ -1,0 +1,3556 @@
+### 新Linux安装好后配置
+
+#### 修改ip
+
+vim /etc/sysconfig/network-scripts/ifcfg-ens33
+
+`BOOTPROTO="static"`
+
+`IPADDR=192.168.150.130`
+`GATEWAY=192.168.150.2`
+`DNS1=192.168.150.2`
+
+service network restart    -- 重启网络服务
+
+
+
+#### 修改主机名
+
+vim /etc/hostname
+
+reboot       -- 重启系统
+
+
+
+#### 查看内置jdk并卸载
+
+rpm -qa | grep jdk         -- 查看jdk安装列表
+
+rpm -e --nodeps java-1.8.0-openjdk-headless
+
+rpm -e --nodeps java-1.8.0-openjdk
+
+rpm -e --nodeps java-1.7.0-openjdk-headless
+
+rpm -e --nodeps java-1.7.0-openjdk
+
+
+
+#### 查看内置数据库并卸载
+
+rpm -qa | grep mari
+
+rpm -e --nodeps mariadb-libs
+
+rpm -e --nodeps marisa
+
+
+
+#### 安装jdk
+
+使用rz命令或xshell工具将jdk上传到/opt/software/ 下
+
+tar -zxvf jdk-8u261-linux-x64.tar.gz   -- 解压
+
+vim /etc/profile   -- 配置环境变量
+
+`# jdk1.8`
+
+`export JAVA_HOME=/opt/module/jdk1.8`
+`export PATH=$JAVA_HOME/bin:$PATH`
+
+source /etc/profile   -- 重新加载配置
+
+
+
+------
+
+
+
+#### 安装MySQL5.7通用8.0
+
+**参考文档**
+
+`http://dev.mysql.com/doc/refman/5.7/en/binary-installation.html`
+
+
+
+**1.将安装包解压至/usr/local/  目录下**
+
+tar -xvf mysql-8.0.24-linux-glibc2.12-x86_64.tar.xz
+
+
+
+**2.创建一个软链接**
+
+ln -s /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64   mysql
+
+
+
+**3.创建mysql组和mysql用户**
+
+groupadd   mysql
+
+useradd  -g mysql  mysql
+
+
+
+**4.创建数据存放目录**
+
+在/ 目录下创建mydata/mysql_test_data 目录
+
+mkdir  -p  /mydata/mysql_test_data
+
+
+
+**5.修改目录权限**
+
+chown -R mysql:mysql  /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64   mysql
+
+chown -R mysql:mysql  /mydata
+
+
+
+**6.创建配置文件**
+
+vim  /etc/my.cnf
+
+```xml
+[client]
+#user=root
+#password=admin
+
+[mysql]
+#prompt=(\\u@\\h) [\\d]>\\_
+
+# 注意: mysql的安装目录和数据存储目录分开来
+[mysqld]
+port=3306
+user=mysql
+basedir=/usr/local/mysql-8.0.24-linux-glibc2.12-x86_64
+datadir=/mydata/mysql_test_data
+log_error=error.log
+```
+
+
+
+**7.配置环境变量**
+
+vim /etc/profile
+
+`export  MYSQL=/usr/local/mysql`
+
+<!-- 这里的mysql是创建的软连接,未来好替换 -->
+
+`export  PATH=$PATH:$MYSQL/bin`
+
+
+
+**8.初始化MySQL**
+
+cd  /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64
+
+bin/mysqld --initialize --user=mysql
+
+bin/mysql_ssl_rsa_setup
+
+bin/mysqld_safe --user=mysql &
+
+-- 添加mysql自启动服务
+
+cp support-files/mysql.server /etc/init.d/mysql
+
+
+
+service mysql status  -- 查看mysql状态
+
+重启后可以使用
+
+systemctl   status  mysql
+
+
+
+**9.登录mysql修改密码**
+
+/etc/init.d/mysql.server  start     -- 启动MySQL
+
+mysql -u roo -p      --  密码在/mydata/mysql_test_data/error.log   文件中
+
+set password='admin' ;         --  修改初始密码
+
+
+
+**10.添加mysql自启动**
+
+chkconfig --add mysql
+
+chkconfig --list | grep mysql         --  mysql要在/etc/init.d/  下有
+
+
+
+**11.修改mysql目录权限**
+
+cd  /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64
+
+chown -R root .
+
+
+
+ **12.开放3306端口**
+
+firewall-cmd --permanent --add-port=3306/tcp
+
+firewall-cmd --reload
+
+firewall-cmd --query-port=3306/tcp
+
+
+
+**13.远程连接**
+
+-- ==查看root的权限==
+
+use mysql;
+
+select host,user,plugin from user;
+
+```shell
++-----------+------------------+-----------------------+
+| host      | user             | plugin                |
++-----------+------------------+-----------------------+
+| localhost | mysql.infoschema | caching_sha2_password |
+| localhost | mysql.session    | caching_sha2_password |
+| localhost | mysql.sys        | caching_sha2_password |
+| localhost | root             | caching_sha2_password |
++-----------+------------------+-----------------------+
+```
+
+-- ==修改root用户的host为%(所有连接)==
+
+use mysql;
+
+update user set host='%' where user='root';
+
+-- ==修改加密规则==
+
+alter user 'root'@'%' identified with mysql_native_password by 'admin';
+
+flush privileges;
+
+
+
+------
+
+
+
+#### MySQL配置及参数
+
+**多配置文件**
+
+```shell
+mysql --help --verbose | grep my.cnf
+                      order of preference, my.cnf, $MYSQL_TCP_PORT,
+/etc/my.cnf /etc/mysql/my.cnf /usr/local/mysql/etc/my.cnf ~/.my.cnf
+```
+
+mysql启动后依次去找上面的配置文件
+
+若相同参数,  ==后面替换前面==
+
+
+
+**mysql参数查看**
+
+show variables ;   -- 几百个
+
+show variables like '%character%';   -- 查看编码
+
+show variables like 'innodb%';   -- 查看innodb相关参数
+
+show variables like 'datadir';      -- 查看数据目录
+
+
+
+
+
+**从作用域上分全局参数/会话参数**
+
+show variables like 'long%query%';   -- 回话级别, 每个回话可以单独设置
+
+set session long_query_time=1.5;  
+
+
+
+show global variables like 'long%query%';    -- 全局, 修改完后对新连接生效,之前连接不生效
+
+set global long_query_time=10;
+
+
+
+**从类型上又可分为可修改和只读参数**
+
+show variables like 'datadir';
+
+set global datadir='/mydata/2';   -- 不可修改,只读参数
+
+performance_schema   -- MySQL5.7以后多了这个数据库
+
+切换到performance_schema   数据库
+
+-- ==查询每个回话的变量long_query_time值==
+
+select * from variables_by_thread where variable_name = 'long_query_time';
+
+-- ==查询当前每一个连接线程id==
+
+show processlist;
+
+-- ==查询当前的连接id==
+
+select connection_id();
+
+或
+
+select * from threads limit 1\G
+
+
+
+------
+
+
+
+#### 用户权限管理
+
+##### 创建用户
+
+create user 'david'@'%' identified by '123';    -- 创建一个用户david, %:表示所有网段都可访问
+
+create user 'david'@'192.168.150.%' identified by '123'
+
+​																			-- 创建一个用户david,   只有192.168.150网段可访问
+
+
+
+##### 删除用户
+
+drop user 'david'@'%';
+
+##### 查看用户权限
+
+show grants;        -- 查看当前用户权限
+
+show grants for 'tom'@'192.168.150.%' ;    -- 查看指定用户权限
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'tom'@'192.168.150.%';
++---------------------------------------------+
+| Grants for tom@192.168.150.%                |
++---------------------------------------------+
+| GRANT USAGE ON *.* TO `tom`@`192.168.150.%` |
++---------------------------------------------+
+```
+
+<!--USAGE : 连接权限-->
+
+
+
+##### 授予权限
+
+grant select,update,insert,delete on test.* to 'tom'@'192.168.150.%';
+
+<!-- grant: 关键字 -->
+
+<!-- test.*: 作用域,test库所有表 -->
+
+ <!-- 'tom'@'192.168.150.%': 哪个用户 -->
+
+show grants for 'tom'@'192.168.150.%';
+
+
+
+所有权限
+
+grant all privileges on \*.\* to tom@'%';
+
+<!-- 单引号不是必须的, 如果存在特殊字符则是必须要加的 -->
+
+
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'tom'@'192.168.150.%';
++---------------------------------------------------------------------------+
+| Grants for tom@192.168.150.%                                              |
++---------------------------------------------------------------------------+
+| GRANT USAGE ON *.* TO `tom`@`192.168.150.%`                               |
+| GRANT SELECT, INSERT, UPDATE, DELETE ON `test`.* TO `tom`@`192.168.150.%` |
++---------------------------------------------------------------------------+
+```
+
+
+
+##### 修改用户密码
+
+alter user 'tom'@'%' identified by '456';
+
+
+
+##### 给tom用户添加新权限
+
+grant create,index on test.* to 'tom'@'%';
+
+show grants for 'tom'@'%';
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'tom'@'%';
++------------------------------------------------------------------------------+
+| Grants for tom@%                                                             |
++------------------------------------------------------------------------------+
+| GRANT USAGE ON *.* TO `tom`@`%`                                              |
+| GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, INDEX ON `test`.* TO `tom`@`%` |
++------------------------------------------------------------------------------+
+```
+
+
+
+##### 删除用户权限
+
+revoke create,index on test.* from 'tom'@'%';    -- 删除create,index权限
+
+revoke grant option on test.* from tom@'%';     -- ==删除赋予权限的权限==
+
+show grants for 'tom'@'%';
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'tom'@'%';
++---------------------------------------------------------------+
+| Grants for tom@%                                              |
++---------------------------------------------------------------+
+| GRANT USAGE ON *.* TO `tom`@`%`                               |
+| GRANT SELECT, INSERT, UPDATE, DELETE ON `test`.* TO `tom`@`%` |
++---------------------------------------------------------------+
+```
+
+revoke all on \*.\*  from 'tom'@'%'    -- 删除所有权限
+
+<!-- revoke仅删除权限, 不删除用户 --> 
+
+<!-- revoke all 后还是会有一个USAGE 权限 --> 
+
+
+
+##### 将权限授予其他用户
+
+(root@localhost) [performance_schema]> grant select ,update,insert,delete on test.* to 'tom'@'%' with grant option;
+
+<!-- with grant option : 授予tom用户授予权限的权限 -->
+
+show grants for 'tom'@'%';
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'tom'@'%';
++---------------------------------------------------------------------------------+
+| Grants for tom@%                                                                |
++---------------------------------------------------------------------------------+
+| GRANT USAGE ON *.* TO `tom`@`%`                                                 |
+| GRANT SELECT, INSERT, UPDATE, DELETE ON `test`.* TO `tom`@`%` WITH GRANT OPTION |
++---------------------------------------------------------------------------------+
+```
+
+
+
+==使用tom用户,将select权限授予jery用户==
+
+(tom@192.168.150.131) [test]> grant select on test.* to 'jery'@'%';
+
+```shell
+(root@localhost) [performance_schema]> show grants for 'jery'@'%';
++----------------------------------------+
+| Grants for jery@%                      |
++----------------------------------------+
+| GRANT USAGE ON *.* TO `jery`@`%`       |
+| GRANT SELECT ON `test`.* TO `jery`@`%` |
++----------------------------------------+
+```
+
+
+
+##### MySQL修改权限的生效
+
+<!-- 执行grant,revoke,set password, rename user命令修改权限后,MySQL会自动将修改后的权限信息同步加载到系统内存中 -->
+
+<!-- 如果执行insert/update/delete 操作上述系统权限表后,则必须再执行刷新权限命令才能同步到系统内存中,刷新权限命令包括: flush privileges / mysqladmin flush-privileges / mysqladmin reload -->
+
+<!-- 如果是修改tables和columns级别权限, 则客户端的下次操作新权限就会生效 -->
+
+<!-- 如果是修改database级别权限, 则新权限在客户端执行use database命令后生效 -->
+
+<!-- 如果是修改global级别权限,则需要重新创建连接新权限才能生效 -->
+
+<!-- -skip-grant-tables 可以跳过所有系统权限表而允许所有用户登录,只在特殊情况下暂时使用 -->
+
+
+
+##### 用户锁
+
+alter user tom@localhost account lock;
+
+alter user tom@localhost account unlock;
+
+select user,host,account_locked from mysql.user;
+
+
+
+##### 用户角色
+
+create role readonly;           -- 创建readonly角色
+
+grant select on test.* to readonly;       -- 赋予角色读权限
+
+create user read1@localhost identified by '123';
+
+create user read2@localhost identified by '123';
+
+-- 查看权限
+
+```
+(root@localhost) [(none)]> show grants for readonly@'%';
++--------------------------------------------+
+| Grants for readonly@%                      |
++--------------------------------------------+
+| GRANT USAGE ON *.* TO `readonly`@`%`       |
+| GRANT SELECT ON `test`.* TO `readonly`@`%` |
++--------------------------------------------+
+2 rows in set (0.00 sec)
+
+(root@localhost) [(none)]> show grants for read1@localhost;
++-------------------------------------------+
+| Grants for read1@localhost                |
++-------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost` |
++-------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+-- 赋予权限
+
+```
+(root@localhost) [(none)]> grant readonly to read1@localhost;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [(none)]> show grants for read1@localhost;
++---------------------------------------------+
+| Grants for read1@localhost                  |
++---------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost`   |
+| GRANT `readonly`@`%` TO `read1`@`localhost` |
++---------------------------------------------+
+2 rows in set (0.00 sec)
+```
+
+-- 也可单独对用户赋予权限
+
+```
+(root@localhost) [(none)]> grant update on test.* to read1@localhost;
+Query OK, 0 rows affected (0.01 sec)
+
+(root@localhost) [(none)]> show grants for read1@localhost;
++-------------------------------------------------+
+| Grants for read1@localhost                      |
++-------------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost`       |
+| GRANT UPDATE ON `test`.* TO `read1`@`localhost` |
+| GRANT `readonly`@`%` TO `read1`@`localhost`     |
++-------------------------------------------------+
+3 rows in set (0.00 sec)
+```
+
+-- 回收权限
+
+```
+(root@localhost) [(none)]> revoke readonly from read1@localhost;
+Query OK, 0 rows affected (0.01 sec)
+
+(root@localhost) [(none)]> show grants for read1@localhost;
++-------------------------------------------------+
+| Grants for read1@localhost                      |
++-------------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost`       |
+| GRANT UPDATE ON `test`.* TO `read1`@`localhost` |
++-------------------------------------------------+
+2 rows in set (0.00 sec)
+
+(root@localhost) [(none)]> revoke update on test.* from read1@localhost;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [(none)]> show grants for read1@localhost;
++-------------------------------------------+
+| Grants for read1@localhost                |
++-------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost` |
++-------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+<!-- 角色权限变化时,相应用户的权限也会变化 -->
+
+-- 查看详细权限,分了角色的用户
+
+```
+(root@localhost) [(none)]> show grants for read1@localhost using readonly;
++---------------------------------------------------------+
+| Grants for read1@localhost                              |
++---------------------------------------------------------+
+| GRANT USAGE ON *.* TO `read1`@`localhost`               |
+| GRANT SELECT, UPDATE ON `test`.* TO `read1`@`localhost` |
+| GRANT `readonly`@`%` TO `read1`@`localhost`             |
++---------------------------------------------------------+
+3 rows in set (0.00 sec)
+```
+
+
+
+
+
+**四个用户权限表**
+
+```shell
+(root@localhost) [mysql]> show tables like 'user';
++------------------------+
+| Tables_in_mysql (user) |
++------------------------+
+| user                   |
++------------------------+
+1 row in set (0.00 sec)
+
+(root@localhost) [mysql]> show tables like 'db';
++----------------------+
+| Tables_in_mysql (db) |
++----------------------+
+| db                   |
++----------------------+
+1 row in set (0.00 sec)
+
+(root@localhost) [mysql]> show tables like 'tables_priv';
++-------------------------------+
+| Tables_in_mysql (tables_priv) |
++-------------------------------+
+| tables_priv                   |
++-------------------------------+
+1 row in set (0.00 sec)
+
+(root@localhost) [mysql]> show tables like 'columns_priv';
++--------------------------------+
+| Tables_in_mysql (columns_priv) |
++--------------------------------+
+| columns_priv                   |
++--------------------------------+
+1 row in set (0.00 sec)
+```
+
+
+
+**限制用户连接数**
+
+alter user 'tom'@'%' with max_user_connections 1;
+
+==超过最大连接数会报错==
+
+```shell
+[root@centos7_01 ~]# mysql -h 192.168.150.131 -u tom -p
+Enter password: 
+ERROR 1226 (42000): User 'tom' has exceeded the 'max_user_connections' resource (current value: 1)
+```
+
+
+
+------
+
+#### MySQL连接
+
+* 通过本地socket进行连接
+
+  * mysql -u root -padmin -S/tmp/mysql.sock  (完整命令)
+
+    mysql  -u root  -padmin    (简化命令)
+
+    ```shell
+    (root@localhost) [mysql]> show variables like 'socket%';
+    +---------------+-----------------+
+    | Variable_name | Value           |
+    +---------------+-----------------+
+    | socket        | /tmp/mysql.sock |
+    +---------------+-----------------+
+    ```
+
+* 通过TCP/IP协议远程连接
+
+  * mysql  -h  192.168.150.131  -P 3306 -u root -p
+
+* 通过配置my.cnf免密码输入
+
+  [client]
+
+  user=root
+
+  password=admin
+
+  socket=/tmp/mysql.sock
+
+
+
+* 查看连接方式
+
+  1. 本地socket
+
+  ```shell
+  (root@localhost) [(none)]> \s
+  --------------
+  mysql  Ver 8.0.24 for Linux on x86_64 (MySQL Community Server - GPL)
+  
+  Connection id:		17
+  Current database:	
+  Current user:		root@localhost
+  SSL:			Not in use
+  Current pager:		stdout
+  Using outfile:		''
+  Using delimiter:	;
+  Server version:		8.0.24 MySQL Community Server - GPL
+  Protocol version:	10
+  Connection:		Localhost via UNIX socket
+  Server characterset:	utf8mb4
+  Db     characterset:	utf8mb4
+  Client characterset:	utf8mb4
+  Conn.  characterset:	utf8mb4
+  UNIX socket:		/tmp/mysql.sock
+  Binary data as:		Hexadecimal
+  Uptime:			4 hours 30 min 59 sec
+  
+  Threads: 2  Questions: 251  Slow queries: 0  Opens: 336  Flush tables: 3  Open tables: 255  Queries per second avg: 0.015
+  --------------
+  ```
+
+  2. TCP/IP
+
+  ```shell
+  (tom@192.168.150.131) [(none)]> \s;
+  --------------
+  mysql  Ver 8.0.24 for Linux on x86_64 (MySQL Community Server - GPL)
+  
+  Connection id:		21
+  Current database:	
+  Current user:		tom@192.168.150.130
+  SSL:			Cipher in use is TLS_AES_256_GCM_SHA384
+  Current pager:		stdout
+  Using outfile:		''
+  Using delimiter:	;
+  Server version:		8.0.24 MySQL Community Server - GPL
+  Protocol version:	10
+  Connection:		192.168.150.131 via TCP/IP
+  Server characterset:	utf8mb4
+  Db     characterset:	utf8mb4
+  Client characterset:	utf8mb3
+  Conn.  characterset:	utf8mb3
+  TCP port:		3306
+  Binary data as:		Hexadecimal
+  Uptime:			4 hours 32 min 18 sec
+  
+  Threads: 3  Questions: 257  Slow queries: 0  Opens: 336  Flush tables: 3  Open tables: 255  Queries per second avg: 0.015
+  --------------
+  ```
+
+  
+
+* SSL连接加密
+
+  启用SSL连接加密
+
+  1. 安装时启用
+
+     bin/mysql_ssl_rsa_setup
+
+  2. 安装后启用
+
+     mysql_ssl_rsa_setup
+
+     /mdata/mysql_test_data/下会生成一些 *.pem文件
+
+     修改这些文件的用户和组
+
+     chown mysql:mysql  *.pem
+
+     重启mysql服务
+
+     
+
+  关闭SSL连接加密
+
+  ​	mysql -h192.168.150.131 -utom -p123  --ssl-mode=DISABLED
+
+  
+
+  让某个用户使用/关闭SSL
+
+  ​	alter user  'tom'@'%'  require  ssl;
+
+  ​    alter user  'tom'@'%'  require  none;
+
+  
+
+  <!-- 注意使用alter强制用户使用SSL,但是连接时加上--ssl-mode=DISABLED, 会报错 -->
+
+* x509连接
+
+  alter  user  tom@'%'  require  x509;
+
+  此时连接端需要SSL加密文件  
+
+  /mydata/mysql_test_data/  下 client-cert.pem, client-key.pem, 
+
+
+
+------
+
+#### MySQL插件
+
+1. 安装validate_password插件(密码检验插件)
+
+   INSTALL COMPONENT 'file://component_validate_password';
+
+   ```shell
+   (root@localhost) [(none)]> show variables like 'validate%';
+   +--------------------------------------+--------+
+   | Variable_name                        | Value  |
+   +--------------------------------------+--------+
+   | validate_password.check_user_name    | ON     |
+   | validate_password.dictionary_file    |        |
+   | validate_password.length             | 8      |
+   | validate_password.mixed_case_count   | 1      |
+   | validate_password.number_count       | 1      |
+   | validate_password.policy             | MEDIUM |
+   | validate_password.special_char_count | 1      |
+   +--------------------------------------+--------+
+   7 rows in set (0.00 sec)
+   ```
+
+   
+
+2. 卸载插件validate_password插件
+
+   UNINSTALL COMPONENT 'file://component_validate_password';
+
+   ```shell
+   (root@localhost) [(none)]> show variables like 'validate%';
+   Empty set (0.00 sec)
+   ```
+
+3. 停用自带的validate_password插件
+
+   uninstall plugin validate_password;
+
+------
+
+#### MySQL启动与关闭
+
+mysql.server
+
+mysql_safe.server
+
+
+
+**忘记密码**
+
+在配置中配置
+
+[mysqld]
+
+skip-grant-tables
+
+
+
+
+
+------
+
+#### 单机多实例
+
+vim  /etc/my.cnf
+
+```shell
+[client]
+user=root
+password=admin
+socket=/tmp/mysql.sock
+
+[mysql]
+prompt=(\\u@\\h) [\\d]>\\_
+
+[mysqld]
+server-id=1
+port=3306
+datadir=/mydata/mysql_test_data
+log_error=error.log
+plugin-load=validate_password.so
+
+[mysqld_multi]
+mysqld=/usr/local/mysql/bin/mysqld_safe
+mysqladmin=/usr/local/mysql/bin/mysqladmin
+log=/usr/local/mysql/mysqld_multi.log
+#user=root
+#pass=admin
+
+[mysqld1]
+server-id=11
+port=3307
+innodb_buffer_pool_size=32M
+datadir=/mydate/data1
+socket=/tmp/mysql.sock1
+
+[mysqld2]
+server-id=12
+innodb_buffer_pool_size=32M
+port=3308
+datadir=/mydata/data2
+socket=/tmp/mysql.sock2
+```
+
+开启  mysqld1  数据库
+
+mysqld_multi start 1
+
+netstat -ntl    -- 3307 已启动
+
+```shell
+[root@centos02 /]# netstat -ntl
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+tcp        0      0 127.0.0.1:631           0.0.0.0:*               LISTEN     
+tcp        0      0 127.0.0.1:6010          0.0.0.0:*               LISTEN     
+tcp        0      0 127.0.0.1:6011          0.0.0.0:*               LISTEN     
+tcp        0      0 0.0.0.0:111             0.0.0.0:*               LISTEN     
+tcp        0      0 192.168.122.1:53        0.0.0.0:*               LISTEN     
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN     
+tcp6       0      0 ::1:631                 :::*                    LISTEN     
+tcp6       0      0 ::1:6010                :::*                    LISTEN     
+tcp6       0      0 ::1:6011                :::*                    LISTEN     
+tcp6       0      0 :::33060                :::*                    LISTEN     
+tcp6       0      0 :::3307                 :::*                    LISTEN     
+tcp6       0      0 :::111                  :::*                    LISTEN     
+tcp6       0      0 :::22                   :::*                    LISTEN 
+```
+
+
+
+------
+
+#### 用户与角色
+
+--  创建role
+
+create role  ==dev==;
+
+grant all on test.* to ==dev== with grant option;
+
+-- 删除角色权限
+
+revoke grant option on  test.*  from  ==dev==;
+
+-- 用户与角色绑定
+
+create user tom@'%'  identified  by '123';
+
+grant  ==dev==  to  tom@'%';
+
+--  显示用户权限
+
+show grants for 'dev1_tom'@'%';
+
+show grants for 'dev1_tom'@'%' using ==dev==;
+
+-- 删除用户的角色
+
+revoke ==dev== from tom@'%';
+
+------
+
+
+
+#### 数据库与数据库实例
+
+
+
+
+
+#### 日志
+
+* 错误日志
+
+  参数: log_error
+
+  默认名: 机器名.err
+  建议统一修改成一个固定的名称,例如mysql.err
+
+  ```shell
+  [mysqld]
+  log_error=mysql.err
+  ```
+
+  
+
+* 慢查询日志
+
+  1. 将运行时间超过某个时间阈值的SQL语句记录到文件
+
+     默认名: 机器名-slow.log
+
+  2. MySQL5.1开始可以以毫秒为单位记录运行的SQL语句
+
+  3. MySQL5.5开始可以将慢查询保存到表
+
+  4. MySQL5.6开始可以更细粒度的记录慢查询
+
+  5. MySQL5.7将时区信息存入到慢查询日志
+
+* 慢查询日志参数
+
+  slow_query_log			  是否开启慢查询日志
+
+  slow_query_log_file   	慢查询日志文件名
+
+  long_query_time  		  指定慢查询阈值(5.5  毫秒支持)  默认是10秒
+
+  min_examined_row_limit    扫描记录少于该值的sql不记录到慢查询日志
+
+  log-queries-not-using-indexes	将没有使用索引的SQL记录到慢查询日志
+
+  log_throttle_queries_not_using_indexs	限制每分钟记录没有使用索引的SQL语句的次数(5.6)
+
+  log-slow-admin-statement		记录管理操作,如ALTER/ANALYZE  TABLE
+
+  log_output		慢查询日志的格式 , {FILE|TABLE|NONE}  (5.5)
+
+  log_slow_slave_statements	在从服务器上开启慢查询日志
+
+  log_timestamps		写入时区信息  (5.7)
+
+  <!-- 慢查询时间是Query_time - Lock_time -->
+
+  ```shell
+  [mysqld]
+  port=3306
+  user=mysql
+  basedir=/usr/local/mysql8
+  datadir=/mydata/mysql_test_data
+  log_error=error.log
+  #skip-grant-tables
+  
+  #slow log
+  slow_query_log=1
+  slow_query_log_file=slow.log
+  long_query_time=2
+  ```
+
+  ==在线设置参数==
+
+  ```shell
+  (root@localhost) [(none)]> set long_query_time=10;
+  Query OK, 0 rows affected (0.00 sec)
+  
+  (root@localhost) [(none)]> show variables like 'long_query_time';
+  +-----------------+-----------+
+  | Variable_name   | Value     |
+  +-----------------+-----------+
+  | long_query_time | 10.000000 |
+  +-----------------+-----------+
+  ```
+
+  
+
+  ==线上清空慢查询日志==
+
+  -- 备份日志
+
+  mv  slow.log   slow.log.20210530
+
+  -- 执行SQL
+
+  (root@localhost) [(none)]> flush slow logs;
+  Query OK, 0 rows affected (0.00 sec)
+
+  
+
+  ==min_examined_row_limit扫描行数大于多少时才记录==
+
+  ```shell
+  #slow log
+  slow_query_log=1
+  slow_query_log_file=slow.log
+  long_query_time=2
+  min_examined_row_limit=100   
+  ```
+
+  ==log-queries-not-using-indexes没有使用索引时记录==
+
+  ==log_throttle_queries_not_using_indexes=10 每分钟记录没有使用索引SQL语句次数==
+
+  ```shell
+  #slow log
+  slow_query_log=1
+  slow_query_log_file=slow.log
+  long_query_time=2
+  min_examined_row_limit=100
+  log-queries-not-using-indexes
+  log_throttle_queries_not_using_indexes=10
+  ```
+
+  ==log_timestamps = system改成当前系统时间==
+
+  <!-- 注意此参数只有5.7生效 -->
+
+  ```shell
+  #slow log
+  slow_query_log=1
+  slow_query_log_file=slow.log
+  long_query_time=2
+  min_examined_row_limit=100
+  log-queries-not-using-indexes
+  log_throttle_queries_not_using_indexes=10
+  log-slow-admin-statements
+  log_slow_slave_statements
+  [mysqld-5.7]
+  log_timestamps = system
+  ```
+
+  
+
+  
+
+* 通用日志
+
+  可以记录数据库所有相关操作
+
+  参数: general_log
+
+  默认文件名: 机器名.log
+
+  同样可以将日志保存到表
+
+  mysql库下general_log表
+
+  ==开启性能下降明显==
+
+  <!-- 一般不开启 -->
+
+  ```shell
+  [mysqld]
+  #log
+  slow_query_log=1
+  slow_query_log_file=slow.log
+  long_query_time=2
+  min_examined_row_limit=100
+  log-queries-not-using-indexes
+  log_throttle_queries_not_using_indexes=10
+  log-slow-admin-statements
+  log_slow_slave_statements
+  
+  general_log=1
+  general_log_file=general.log
+  ```
+
+  ```shell
+  (root@localhost) [(none)]> show variables like 'general_%';
+  +------------------+-------------+
+  | Variable_name    | Value       |
+  +------------------+-------------+
+  | general_log      | ON          |
+  | general_log_file | general.log |
+  +------------------+-------------+
+  2 rows in set (0.00 sec)
+  ```
+
+  在线关闭通用日志
+
+  ```shell
+  (root@localhost) [(none)]> set global general_log = 0;
+  Query OK, 0 rows affected (0.00 sec)
+  ```
+
+  ```shell
+  (root@localhost) [(none)]> show variables like 'general_%';
+  +------------------+-------------+
+  | Variable_name    | Value       |
+  +------------------+-------------+
+  | general_log      | OFF         |
+  | general_log_file | general.log |
+  +------------------+-------------+
+  2 rows in set (0.00 sec)
+  ```
+
+  
+
+
+
+------
+
+#### MySQL存储引擎
+
+| Name       | License | Transactional |
+| ---------- | ------- | ------------- |
+| Aria       | GPL     | No            |
+| BlitzDB    | GPL     | NO            |
+| Falcon     | GPL     | Yes           |
+| InnoDB     | GPL     | Yes           |
+| MyISAM     | GPL     | No            |
+| InfiniDB   | GPL     | No            |
+| TokuDB     | GPL     | Yes           |
+| WiredTiger | GPL     | Yes           |
+
+**官方存储引擎**
+
+* MyISAM
+* InnoDB
+* Memory
+* Federated
+* CSV
+* Archive
+
+**第三方存储引擎**
+
+* TokuDB
+* InfoBright
+* Spider
+
+
+
+**查看当前数据库支持的存储引擎**
+
+show  engines;
+
+```shell
+(root@localhost) [(none)]> show engines;
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+| Engine             | Support | Comment                                                        | Transactions | XA   | Savepoints |
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+| FEDERATED          | NO      | Federated MySQL storage engine                                 | NULL         | NULL | NULL       |
+| MEMORY             | YES     | Hash based, stored in memory, useful for temporary tables      | NO           | NO   | NO         |
+| InnoDB             | DEFAULT | Supports transactions, row-level locking, and foreign keys     | YES          | YES  | YES        |
+| PERFORMANCE_SCHEMA | YES     | Performance Schema                                             | NO           | NO   | NO         |
+| MyISAM             | YES     | MyISAM storage engine                                          | NO           | NO   | NO         |
+| MRG_MYISAM         | YES     | Collection of identical MyISAM tables                          | NO           | NO   | NO         |
+| BLACKHOLE          | YES     | /dev/null storage engine (anything you write to it disappears) | NO           | NO   | NO         |
+| CSV                | YES     | CSV storage engine                                             | NO           | NO   | NO         |
+| ARCHIVE            | YES     | Archive storage engine                                         | NO           | NO   | NO         |
++--------------------+---------+----------------------------------------------------------------+--------------+------+------------+
+9 rows in set (0.00 sec)
+```
+
+**开启federated引擎**
+
+vim /etc/my.cnf
+
+```shell
+[mysqld]
+federated
+```
+
+service  mysql  restart
+
+
+
+**禁用存储引擎**
+
+vim /etc/my.cnf
+
+```shell
+[mysqld]
+# engine
+skip-federated
+skip-archive
+ship-blackhole
+```
+
+
+
+**显示mysql库下所有表引擎信息**
+
+```shell
+(root@localhost) [mysql]> show table status;
++------------------------------------------------------+--------+---------+------------+------+----------------+-------------+-----------------+--------------+-----------+----------------+---------------------+-------------+------------+--------------------+----------+---------------------------------------+------------------------------------------+
+| Name                                                 | Engine | Version | Row_format | Rows | Avg_row_length | Data_length | Max_data_length | Index_length | Data_free | Auto_increment | Create_time         | Update_time | Check_time | Collation          | Checksum | Create_options                        | Comment                                  |
++------------------------------------------------------+--------+---------+------------+------+----------------+-------------+-----------------+--------------+-----------+----------------+---------------------+-------------+------------+--------------------+----------+---------------------------------------+------------------------------------------+
+| columns_priv                                         | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Column privileges                        |
+| component                                            | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |              3 | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC                    | Components                               |
+| db                                                   | InnoDB |      10 | Dynamic    |    2 |           8192 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Database privileges                      |
+| default_roles                                        | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Default roles                            |
+| engine_cost                                          | InnoDB |      10 | Dynamic    |    2 |           8192 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 |                                          |
+| func                                                 | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | User defined functions                   |
+| general_log                                          | CSV    |      10 | Dynamic    |    2 |              0 |           0 |               0 |            0 |         0 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL |                                       | General log                              |
+| global_grants                                        | InnoDB |      10 | Dynamic    |   38 |            431 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Extended global grants                   |
+| gtid_executed                                        | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8mb4_0900_ai_ci |     NULL | row_format=DYNAMIC                    |                                          |
+| help_category                                        | InnoDB |      10 | Dynamic    |   53 |            309 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | help categories                          |
+| help_keyword                                         | InnoDB |      10 | Dynamic    |  868 |            151 |      131072 |               0 |       131072 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | help keywords                            |
+| help_relation                                        | InnoDB |      10 | Dynamic    | 2403 |             40 |       98304 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | keyword-topic relation                   |
+| help_topic                                           | InnoDB |      10 | Dynamic    | 1216 |           1306 |     1589248 |               0 |        98304 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | help topics                              |
+| innodb_index_stats                                   | InnoDB |      10 | Dynamic    |   10 |           1638 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 07:08:48 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 |                                          |
+| innodb_table_stats                                   | InnoDB |      10 | Dynamic    |    3 |           5461 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 07:08:48 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 |                                          |
+| password_history                                     | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Password history for user accounts       |
+| plugin                                               | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | MySQL plugins                            |
+| procs_priv                                           | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Procedure privileges                     |
+| proxies_priv                                         | InnoDB |      10 | Dynamic    |    1 |          16384 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | User proxy privileges                    |
+| replication_asynchronous_connection_failover         | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | The source configuration details         |
+| replication_asynchronous_connection_failover_managed | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | The managed source configuration details |
+| role_edges                                           | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Role hierarchy and role grants           |
+| server_cost                                          | InnoDB |      10 | Dynamic    |    6 |           2730 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 |                                          |
+| servers                                              | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | MySQL Foreign Servers table              |
+| slave_master_info                                    | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Master Information                       |
+| slave_relay_log_info                                 | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Relay Log Information                    |
+| slave_worker_info                                    | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Worker Information                       |
+| slow_log                                             | CSV    |      10 | Dynamic    |    2 |              0 |           0 |               0 |            0 |         0 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL |                                       | Slow log                                 |
+| tables_priv                                          | InnoDB |      10 | Dynamic    |    2 |           8192 |       16384 |               0 |        16384 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Table privileges                         |
+| time_zone                                            | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |              1 | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Time zones                               |
+| time_zone_leap_second                                | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Leap seconds information for time zones  |
+| time_zone_name                                       | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Time zone names                          |
+| time_zone_transition                                 | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Time zone transitions                    |
+| time_zone_transition_type                            | InnoDB |      10 | Dynamic    |    0 |              0 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_general_ci    |     NULL | row_format=DYNAMIC stats_persistent=0 | Time zone transition types               |
+| user                                                 | InnoDB |      10 | Dynamic    |    4 |           4096 |       16384 |               0 |            0 |   4194304 |           NULL | 2021-05-27 15:08:50 | NULL        | NULL       | utf8_bin           |     NULL | row_format=DYNAMIC stats_persistent=0 | Users and global privileges              |
++------------------------------------------------------+--------+---------+------------+------+----------------+-------------+-----------------+--------------+-----------+----------------+---------------------+-------------+------------+--------------------+----------+---------------------------------------+------------------------------------------+
+35 rows in set (0.05 sec)
+```
+
+
+
+
+
+------
+
+#### 导入数据到dbt3数据库
+
+```shell
+(root@localhost) [(none)]> create database dbt3;
+Query OK, 1 row affected (0.01 sec)
+```
+
+mysql  dbt3  <  dbt3_sl.sql
+
+```shell
+[root@centos02 sqltest]# ls -lh
+总用量 1.5G
+-rwxr-xr-x. 1 mysql mysql 1.2G 6月   4 2015 dbt3_s1.sql
+-rw-r--r--. 1 mysql mysql 297M 6月   1 10:56 dbt3_s1.tar.gz
+-rw-r--r--. 1 mysql mysql  35M 6月   1 10:56 employees_backup.tar.gz
+-rw-r--r--. 1 mysql mysql  26M 6月   1 10:56 employees_db-full-1.0.5.tar.bz2
+```
+
+
+
+
+
+------
+
+
+
+#### 数据类型
+
+| 类型      | 占用空间 | 最小值               | 最大值               |
+| --------- | -------- | -------------------- | -------------------- |
+|           | 字节     | (Signed/Unsigned)    | (Signed/Unsigned)    |
+| tinyint   | 1        | -128                 | 127                  |
+|           |          | 0                    | 255                  |
+| smallint  | 2        | -32768               | 32767                |
+|           |          | 0                    | 65535                |
+| mediumint | 3        | -8388608             | 8388607              |
+|           |          | 0                    | 16777215             |
+| int       | 4        | -2147483648          | 2147483647           |
+|           |          | 0                    | 4294967295           |
+| bigint    | 8        | -9223372036854775808 | 9223372036854775807  |
+|           |          | 0                    | 18446744073709551615 |
+
+
+
+**INT类型--属性**
+
+* UNSIGNED/SIGNED
+
+  是否有符号
+
+* ZEROFILL
+
+  显示属性
+
+  值不做任何修改
+
+* AUTO_INCREMENT
+
+  自增
+
+  每张表一个
+
+  必须是索引的一部分
+
+**INT类型--总结**
+
+* 推荐不要使用UNSIGNED
+* 范围本质上没有大的改变
+* UNSIGNED可能会有溢出现象发生
+* 自增INT类型主键建议使用BIGINT
+
+
+
+**数字精度**
+
+* 单精度类型: FLOAT
+
+* 双精度类型: DOUBLE
+
+* 高精度类型: DECIMAL
+
+  <!-- M*G/G 不一定等于M -->
+
+  | 类型    | 占用空间 | 精度   | 精确性       |
+  | ------- | -------- | ------ | ------------ |
+  | FLOAT   | 4        | 单精度 | 低           |
+  | DOUBLE  | 8        | 双精度 | 低,比FLOAT高 |
+  | DECIMAL | 变长     | 高精度 | 非常高       |
+
+  FLOAT(M,D)/DOUBLE(M,D)/DECIMAL(M,D)表示显示M位整数,其中D位位于小数点后面
+
+  <!-- 财务,账务系统必须用DECIMAL类型 -->
+
+* 相关函数
+
+  -- 向下取整
+
+  floor(1.9)   -->  1
+
+  floor(-1.9)   --> -2
+
+  -- 四舍五入
+
+  round(1.4)   -->  1
+
+  -- 随机值
+
+  rand()
+
+
+
+**字符串类型**
+
+|              | 说明           | N的含义 | 是否有字符集 | 最大长度 |
+| ------------ | -------------- | ------- | ------------ | -------- |
+| char(N)      | 定长字符       | 字符    | 是           | 255      |
+| varchar(n)   | 变长字符       | 字符    | 是           | 16384    |
+| binary(n)    | 定长二进制字节 | 字节    | 否           | 255      |
+| varbinary(n) | 变长二进制字节 | 字节    | 否           | 16384    |
+| tinyblob     | 二进制大对象   | 字节    | 否           | 256      |
+| blob         | 二进制大对象   | 字节    | 否           | 16K      |
+| mediumblob   | 二进制大对象   | 字节    | 否           | 16M      |
+| longblob     | 二进制大对象   | 字节    | 否           | 4G       |
+| tinytext     | 大对象         | 字节    | 是           | 256      |
+| text         | 大对象         | 字节    | 是           | 16K      |
+| mediumtext   | 大对象         | 字节    | 是           | 16M      |
+| longtext     | 大对象         | 字节    | 是           | 4G       |
+
+
+
+**获取字符串字节长度和字符长度**
+
+```shell
+(root@localhost) [dbt3]> select length('数'),char_length('数');
++---------------+--------------------+
+| length('数')  | char_length('数')  |
++---------------+--------------------+
+|             3 |                  1 |
++---------------+--------------------+
+```
+
+
+
+**字符集**
+
+* 一组符号和编码的集合
+
+* 常见字符集: utf8, utf8mb4,  gbk,  gb18030
+
+* 查看字符集
+
+  show character set;
+
+  show variables like 'character%';
+
+* 修改字符集默认配置
+
+  vim  /etc/my.cnf
+
+  [mysqld]
+
+  character_set_server=utf8mb4
+
+  重启服务
+
+
+
+* 修改已有表的字符集
+
+  alter  table  t  charset=utf8mb4;
+
+  <!-- 修改表t的默认编码为utf8mb4,已有列的编码不会变,新增的列编码会为utf8mb4 -->
+
+  alter  table  t  convert  to  character  set utf8mb4;
+
+  <!-- 修改表t的默认编码为utf8mb4,已有列的编码也变成utf8mb4 -->
+
+  
+
+* MySQL中字符集可以精确到列
+
+  create table t (a char(10))  charset=utf8mb4;
+
+  create table t (a  varchar(10)  charset gbk,
+
+  ​						  b  varchar(10)  charset  latin1,
+
+  ​						  c   varchar(10) )   charset=utf8mb4;
+
+  
+
+* 相关函数
+
+  -- 字符转16进制
+
+  select   hex('你好');
+
+  -- 类型转换
+
+  select   cast(123  as  char(10)) ; 
+
+  -- 大小写不敏感
+
+  ```shell
+  (root@localhost) [test]> select 'a'='A';
+  +---------+
+  | 'a'='A' |
+  +---------+
+  |       1 |
+  +---------+
+  1 row in set (0.00 sec)
+  ```
+
+  
+
+  **时间类型**
+
+  DateTime
+
+  TimeStamp
+
+  ```shell
+  (root@localhost) [dbt3]> select now();
+  +---------------------+
+  | now()               |
+  +---------------------+
+  | 2021-06-02 11:06:37 |
+  +---------------------+
+  1 row in set (0.00 sec)
+  
+  (root@localhost) [dbt3]> select unix_timestamp(now());
+  +-----------------------+
+  | unix_timestamp(now()) |
+  +-----------------------+
+  |            1622603213 |
+  +-----------------------+
+  1 row in set (0.00 sec)
+  ```
+
+  <!-- timestamp会根据时区而调整 set time_zone= ... -->
+
+  now() 		返回SQL执行时的时间
+
+  current_timestamp		与now同义
+
+  sysdate		返回执行函数时的时间
+
+  date_add(date,INTEVER expr unit)  	增加时间
+
+  date_sub(date,INTEVER  expr  unit)	减少时间
+
+  date_format		格式化时间
+
+  ```shell
+  (root@localhost) [test]> select date_add(now(),interval 1 day);
+  +--------------------------------+
+  | date_add(now(),interval 1 day) |
+  +--------------------------------+
+  | 2021-06-03 11:19:15            |
+  +--------------------------------+
+  1 row in set (0.02 sec)
+  
+  (root@localhost) [test]> select date_add(now(),interval -1 hour);
+  +----------------------------------+
+  | date_add(now(),interval -1 hour) |
+  +----------------------------------+
+  | 2021-06-02 10:19:54              |
+  +----------------------------------+
+  1 row in set (0.00 sec)
+  
+  (root@localhost) [test]> select date_add(now(),interval -1 minute);
+  +------------------------------------+
+  | date_add(now(),interval -1 minute) |
+  +------------------------------------+
+  | 2021-06-02 11:19:08                |
+  +------------------------------------+
+  1 row in set (0.00 sec)
+  ```
+
+  ```shell
+  (root@localhost) [test]> select date_format(now(),'%Y-%m-%d');
+  +-------------------------------+
+  | date_format(now(),'%Y-%m-%d') |
+  +-------------------------------+
+  | 2021-06-02                    |
+  +-------------------------------+
+  1 row in set (0.00 sec)
+  ```
+
+  
+
+* JSON类型
+
+#### 快速创建表
+
+create table  xxxx  like  students ;  -- 创建一个一模一样的表包括索引,主外键信息, 但不同步数据
+
+create table  xxxx  as  select  *  from .....  -- 创建表且将数据同步, 但主键和索引不会同步
+
+-- 快速插入
+
+insert into s2 select * from students;
+
+
+
+#### 分区表
+
+
+
+#### 表结构范式设计
+
+* 第一范式
+
+  一张表一定要有一个主键
+
+* 第二范式
+
+  解决部分依赖
+
+* 第三范式
+
+  解决传递依赖
+
+  
+
+------
+
+#### SQL语句
+
+##### insert into
+
+当insert语句中使用on duplicate key update子句时, 如果碰到当前插入的数据违反主键或唯一键,则insert会转变为update语句修改对应的以经存在表中的这条数据. 比如如果a字段有唯一性约束且已经含有1条记录,则以下两天语句的执行结果相同
+
+- insert into table (a,b,c)  values (1,2,3)  on duplicate key update c= c+1;
+- update table set c=c+1 where a=1;
+
+on duplicate key update子句后面可以跟多个修改, 用逗号隔开
+
+上述例子中如果b字段也有唯一性约束,则此语句的执行结果相同,但一般应该避免出现对应多条的情况
+
+- update table set c = c+1 where a=1 or b=2 limit 1;
+
+
+
+##### order by
+
+排序内存默认256K
+
+```shell
+(root@localhost) [dbt3]> show variables like 'sort_buffer_size';
++------------------+--------+
+| Variable_name    | Value  |
++------------------+--------+
+| sort_buffer_size | 262144 |
++------------------+--------+
+1 row in set (0.01 sec)
+```
+
+修改默认排序内存大小
+
+回话级别修改
+
+```shell
+(root@localhost) [dbt3]> set sort_buffer_size=256*1024*1024;
+Query OK, 0 rows affected (0.01 sec)
+
+(root@localhost) [dbt3]> show variables like 'sort_buffer_size';
++------------------+-----------+
+| Variable_name    | Value     |
++------------------+-----------+
+| sort_buffer_size | 268435456 |
++------------------+-----------+
+1 row in set (0.00 sec)
+```
+
+服务级别修改
+
+```shell
+[mysqld]
+# session memory
+sort_buffer_size=32M
+```
+
+
+
+查询例子
+
+默认256K时
+
+```sql
+select * from lineitem order by l_discount desc limit 10000;
+```
+
+```shell
+10000 rows in set (16.07 sec)
+```
+
+修改排序内存为256M后
+
+```shell
+10000 rows in set (7.07 sec)
+```
+
+
+
+查看当前会话排序状态
+
+show  status  like  'sort%';
+
+show  global  status  like  'sort%';
+
+-- 内存为256K时
+
+```shell
+(root@localhost) [dbt3]> show status like 'sort%';
++-------------------+-------+
+| Variable_name     | Value |
++-------------------+-------+
+| Sort_merge_passes | 496   |
+| Sort_range        | 0     |
+| Sort_rows         | 30060 |
+| Sort_scan         | 11    |
++-------------------+-------+
+
+(root@localhost) [dbt3]> flush status;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [dbt3]> show status like 'sort%';
++-------------------+-------+
+| Variable_name     | Value |
++-------------------+-------+
+| Sort_merge_passes | 0     |
+| Sort_range        | 0     |
+| Sort_rows         | 0     |
+| Sort_scan         | 0     |
++-------------------+-------+
+```
+
+-- 内存为256M时
+
+```shell
+(root@localhost) [dbt3]> show status like 'sort%';
++-------------------+-------+
+| Variable_name     | Value |
++-------------------+-------+
+| Sort_merge_passes | 0     |
+| Sort_range        | 0     |
+| Sort_rows         | 10000 |
+| Sort_scan         | 1     |
++-------------------+-------+
+4 rows in set (0.01 sec)
+```
+
+<!-- Sort_merge_passes 归并次数越小越好 -->
+
+select a,b,c from T order 3 ;    --   对第三个列进行排序
+
+
+
+##### limit
+
+常用于分页
+
+select a,b,c  from T  limit  10;   -- 取10条数据
+
+select a,b,c  from  T  limit  10,10   -- 从第10条开始取10条数据
+
+<!-- limit n,m : 如果n值很大,则效率很低 -->
+
+<!-- limit 100,10 :  实际取了110条数据,返回了最后10条 -->
+
+==分页优化==
+
+```sql
+select * from employees order by birth_date,emp_no limit 30;
+
+select *
+  from employees
+ where (birth_data,emp_no) > ('1952-01-01',217446)
+ order by birth_date,emp_no limit 30;
+```
+
+<!-- 改写优点: 性能稳定, 缺点: 不能具体跳转到多少页 -->
+
+
+
+##### group by
+
+分组会产生临时表
+
+查看临时表大小(16M)  16777216/1024/1024 = 16 
+
+```shell
+(root@localhost) [dbt3]> show variables like '%tmp%';
++---------------------------------+-----------+
+| Variable_name                   | Value     |
++---------------------------------+-----------+
+| default_tmp_storage_engine      | InnoDB    |
+| innodb_tmpdir                   |           |
+| internal_tmp_mem_storage_engine | TempTable |
+| slave_load_tmpdir               | /tmp      |
+| tmp_table_size                  | 16777216  |
+| tmpdir                          | /tmp      |
++---------------------------------+-----------+
+6 rows in set (0.00 sec)
+```
+
+设置临时表大小
+
+set  tmp_table_size=1024\*1024\*1024 ;     --  1G
+
+set  tmp_table_size=256*1024     --  256K
+
+<!-- 如果产生临时表很大时,临时表内存不够,会将临时数据存到磁盘上 -->
+
+
+
+查看回话临时表状态
+
+```shell
+(root@localhost) [dbt3]> show status like '%tmp%';
++-------------------------+-------+
+| Variable_name           | Value |
++-------------------------+-------+
+| Created_tmp_disk_tables | 0     |
+| Created_tmp_files       | 5     |
+| Created_tmp_tables      | 1     |
++-------------------------+-------+
+3 rows in set (0.00 sec)
+```
+
+<!-- Created_tmp_disk_tables: 产生基于磁盘的临时表次数 -->
+
+<!-- Created_tmp_files -->
+
+
+
+配置文件中设置临时表大小
+
+```shell
+[mysqld]
+# session memory
+sort_buffer_size=32M
+tmp_table_size=32M
+```
+
+
+
+MySQL5.7及以上分组后不能查询分组以外的字段  -- ONLY_FULL_GROUP_BY
+
+MySQL5.6/5.5可以
+
+```shell
+(root@localhost) [(none)]> show variables like 'sql_mode';
++---------------+-----------------------------------------------------------------------------------------------------------------------+
+| Variable_name | Value                                                                                                                 |
++---------------+-----------------------------------------------------------------------------------------------------------------------+
+| sql_mode      | ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION |
++---------------+-----------------------------------------------------------------------------------------------------------------------+
+1 row in set (0.01 sec)
+```
+
+
+
+##### 相关函数group_concat()
+
+select  userid, group_concat(price, order  by  price  sepatator  ':' )  from user  group by userid;
+
+<!-- 类似于Oracle中listagg()函数 -->
+
+例子: 找到库里不是utf8编码的表和字段
+
+```SQL
+select 
+	concat(table_schema,'.',table_name) as name,
+	character_set_name,
+	group_concat(column_name SEPARATOR ':') as column_ist
+from 
+		information_schema.COLUMNS
+where 
+ data_type in ('varchar','longtext','text','MEDIUMTEXT','char')
+  and  character_set_name <> 'utf8mb4'
+	and table_schema not in ('mysql','performance_schema','information_schema','sys')
+group by name,character_set_name;
+```
+
+
+
+##### in  / exists
+
+效率问题视具体情况而言
+
+例子一: in 效率更高   orders -- 1500000
+
+```sql
+SELECT
+	* 
+FROM
+	orders 
+WHERE
+	o_orderdate IN (
+	SELECT
+		max( o_orderdate ) 
+	FROM
+		orders 
+	GROUP BY
+	date_format( o_orderdate, '%Y%M' ));
+--------------------------------------------------------
+SELECT
+	* 
+FROM
+	orders a 
+WHERE
+	EXISTS ( SELECT max( o_orderdate ) FROM orders b GROUP BY date_format( o_orderdate, '%Y%M' ) HAVING max( o_orderdate ) = a.o_orderdate )
+```
+
+例子二:
+
+in 效率更高   BUSINESS_INDEX_XJQB_aLL_2  ---- 8385625
+
+```sql
+ select *
+   from ADMIN.BUSINESS_INDEX_XJQB_aLL_2 bx
+  inner join v_pub_region_xzqh p
+     on p.code = bx.qhdm 
+  where 1 = 1
+    and bx.sqrq >=  to_char(sysdate -15 ,'yyyy-mm-dd')
+    and p.grade in ('3', '4', '5', '6')
+-----------------------------------------------------------
+select *
+  from ADMIN.BUSINESS_INDEX_XJQB_aLL_2 bx
+ where 1 = 1
+   and bx.sqrq >= to_char(sysdate - 15, 'yyyy-mm-dd')
+   and exists (select 1
+          from v_pub_region_xzqh p
+         where p.code = bx.qhdm
+           and p.grade in ('3', '4', '5', '6'))
+```
+
+
+
+注意使用in或exists时null问题
+
+```shell
+(root@localhost) [dbt3]> select 'c' not in ('a','b',null);
++---------------------------+
+| 'c' not in ('a','b',null) |
++---------------------------+
+|                      NULL |
++---------------------------+
+1 row in set (0.01 sec)
+```
+
+<!-- 对于 not in (xxx), 如果xxx中存在null值,则返回结果只有0或null,需要先在子查询中过滤null值 -->
+
+<!-- not exists 结果是对的 -->
+
+
+
+##### MySQL中显示行号
+
+```shell
+(root@localhost) [employees]> set @a:=0;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [employees]> select @a:=@a+1 as rownum,emp_no,birth_date from employees limit 10;
++--------+--------+------------+
+| rownum | emp_no | birth_date |
++--------+--------+------------+
+|      1 |  10001 | 1953-09-02 |
+|      2 |  10002 | 1964-06-02 |
+|      3 |  10003 | 1959-12-03 |
+|      4 |  10004 | 1954-05-01 |
+|      5 |  10005 | 1955-01-21 |
+|      6 |  10006 | 1953-04-20 |
+|      7 |  10007 | 1957-05-23 |
+|      8 |  10008 | 1958-02-19 |
+|      9 |  10009 | 1952-04-19 |
+|     10 |  10010 | 1963-06-01 |
++--------+--------+------------+
+10 rows in set, 1 warning (0.00 sec)
+```
+
+或者(推荐)
+
+```shell
+(root@localhost) [employees]> select @a:=@a+1 as rownum,emp_no,birth_date from employees,(select @a:=0) a limit 10;
+;
++--------+--------+------------+
+| rownum | emp_no | birth_date |
++--------+--------+------------+
+|      1 |  10001 | 1953-09-02 |
+|      2 |  10002 | 1964-06-02 |
+|      3 |  10003 | 1959-12-03 |
+|      4 |  10004 | 1954-05-01 |
+|      5 |  10005 | 1955-01-21 |
+|      6 |  10006 | 1953-04-20 |
+|      7 |  10007 | 1957-05-23 |
+|      8 |  10008 | 1958-02-19 |
+|      9 |  10009 | 1952-04-19 |
+|     10 |  10010 | 1963-06-01 |
++--------+--------+------------+
+10 rows in set, 2 warnings (0.00 sec)
+```
+
+或者子查询
+
+```sql
+select emp_no,
+		   (select count(1) from employees e2 where e2.emp_no <= e1.emp_no) rownum
+  from employees e1
+ limit 10
+```
+
+
+
+例子: 求员工最新工资
+
+```SQL
+select emp_no,
+			 cast(substring_index(group_concat(salary order by to_date desc,from_date desc),',',1)as unsigned) as salary
+  from salaries
+ group by emp_no		
+```
+
+
+
+##### PREPARE语法
+
+* 防SQL注入
+
+  ```SQL
+  SET @s = 'select * from employees where emp_no = ?';
+  SET @a = 100080;
+  PREPARE stmt FROM @s;
+  EXECUTE stmt USING @a;
+  DEALLOCATE PREPARE stmt;
+  ```
+
+
+
+* 动态查询
+
+  注意空格
+
+  ```sql
+  SET @s = 'select * from employees where 1=1';
+  SET @s = CONCAT(@s,' and gender = "M" ');
+  SET @s = CONCAT(@s,' and birth_date >= "1960-01-01" ');
+  PREPARE stmt FROM @s;
+  EXECUTE stmt ;
+  DEALLOCATE PREPARE stmt ;
+  
+  -- 带上分页
+  SET @s = 'select * from employees where 1=1';
+  SET @s = CONCAT(@s,' and gender = "M" ');
+  SET @s = CONCAT(@s,' and birth_date >= "1960-01-01" ');
+  SET @s = CONCAT(@s,' order by emp_no LIMIT ?,?');
+  SET @page_no = 0;
+  SET @page_count = 10;
+  
+  PREPARE stmt FROM @s;
+  EXECUTE stmt USING @page_no,@page_count;
+  DEALLOCATE PREPARE stmt ;
+  ```
+
+  
+
+##### DML
+
+* insert语法
+
+  ```sql
+  -- 单条插入
+  insert into x values (1,1);
+  insert into x set a=5,b=5;
+  -- 多条插入
+  insert into x values (1,1),(2,2),(3,3);  -- mysql
+  insert into x select * from y;
+  ```
+
+* delete 语法
+
+  ```SQL
+  -- 删除单条
+  delete from x where a = 1;
+  -- 删除多条
+  delete from x where a in (7,8);
+  
+  -- 删除x表中不在y表中的数据
+  delete x,y from x left join y on x.a = y.a where y.a is null;
+  delete from x where x.a not in (select a from y);
+  ```
+
+  
+
+* update 语法
+
+  ```SQL
+  -- a = 1 , b=10  运行后 a = 2, b = 12 非原子操作 (与Oracle结果不同)
+  update t1 set a = a+1 , b = a+10 where a =1 ;
+  ```
+
+* insert 语法
+
+  ```sql
+  -- 如果插入的值有重复, 则更新该值(不建议使用)
+  insert into z values (2) on duplicate key update a = a + 10;
+  ```
+
+* replace 语法
+
+  ```sql
+  -- a b 列唯一
+  (root@localhost) [test]> select * from t2;
+  +---+------+
+  | a | b    |
+  +---+------+
+  | 3 |    1 |
+  | 2 |    2 |
+  | 1 |    3 |
+  +---+------+
+  3 rows in set (0.00 sec)
+  
+  (root@localhost) [test]> begin; replace into t2 values (2,3);
+  Query OK, 0 rows affected (0.00 sec)
+  
+  Query OK, 3 rows affected (0.00 sec)
+  
+  (root@localhost) [test]> select * from t2;
+  +---+------+
+  | a | b    |
+  +---+------+
+  | 3 |    1 |
+  | 2 |    3 |
+  +---+------+
+  2 rows in set (0.00 sec)
+  ```
+
+  
+
+#### 存储过程
+
+* 临时表
+
+  ```SQL
+  -- 创建临时表, 此临时表与group by产生的临时表不同
+  -- 注意group by产生的临时表,是SQL执行过程中隐式创建的
+  -- create temporary 是基于回话的,退出 从新登陆后就没了
+  create temporary table x (int a);
+  
+  ```
+
+  
+
+* 存储过程
+
+  存储在数据库端的一组SQL语句集
+
+  用户可以通过存储过程名和传参多次调用的程序模块
+
+  存储过程特点:
+
+  ​	*  使用灵活,可以使用流程控制语句,自定义变量等完成复杂的业务员逻辑
+
+  ​	*  提高数据安全性,屏蔽应用程序直接对表的操作,易于进行审计
+
+  ​	*  减少网络传输
+
+  ​	*  提高代码维护的复杂度,实际使用中要评估场景是否适合
+
+
+
+* 自定义函数
+* 触发器
+  * 当表上出现特定的事件时触发该程序执行
+  * update/delete/insert
+  * 相关权限: trigger
+
+
+
+------
+
+#### B+树索引
+
+##### 1.索引概述
+
+
+
+查看快大小
+
+```shell
+(root@localhost) [(none)]> show variables like 'innodb_page_size';
++------------------+-------+
+| Variable_name    | Value |
++------------------+-------+
+| innodb_page_size | 16384 |
++------------------+-------+
+1 row in set (0.01 sec)
+```
+
+```shell
+[root@centos02 test]# ll -h
+总用量 272K
+-rw-r-----. 1 mysql mysql 112K 6月   7 11:10 t1.ibd
+-rw-r-----. 1 mysql mysql 128K 6月   7 14:17 t2.ibd
+-rw-r-----. 1 mysql mysql 112K 6月   2 11:11 t.ibd
+```
+
+<!-- 数据在磁盘上的存储都是16K的倍数 -->
+
+<!-- 索引中快中数据逻辑有序 -->
+
+
+
+##### 2.索引操作
+
+* 创建索引
+
+```shell
+(root@localhost) [test]> desc t;
++-------+-----------+------+-----+---------+-------+
+| Field | Type      | Null | Key | Default | Extra |
++-------+-----------+------+-----+---------+-------+
+| a     | datetime  | YES  |     | NULL    |       |
+| b     | timestamp | YES  |     | NULL    |       |
++-------+-----------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+
+(root@localhost) [test]> alter table t add unique idx_a(a);  -- 唯一索引
+Query OK, 0 rows affected (0.03 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+(root@localhost) [test]> alter table t add index idx_b(b);  -- 普通索引
+Query OK, 0 rows affected (0.01 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+(root@localhost) [test]> desc t;
++-------+-----------+------+-----+---------+-------+
+| Field | Type      | Null | Key | Default | Extra |
++-------+-----------+------+-----+---------+-------+
+| a     | datetime  | YES  | UNI | NULL    |       |
+| b     | timestamp | YES  | MUL | NULL    |       |
++-------+-----------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+```
+
+* 删除所引
+
+```shell
+(root@localhost) [test]> alter table t drop index idx_a;
+Query OK, 0 rows affected (0.01 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+(root@localhost) [test]> alter table t drop index idx_b;
+Query OK, 0 rows affected (0.00 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+```
+
+
+
+* 在线索引添加
+
+```shell
+(root@localhost) [test]> show variables like 'innodb%max%';
++----------------------------------+------------+
+| Variable_name                    | Value      |
++----------------------------------+------------+
+| innodb_adaptive_max_sleep_delay  | 150000     |
+| innodb_change_buffer_max_size    | 25         |
+| innodb_compression_pad_pct_max   | 50         |
+| innodb_ft_max_token_size         | 84         |
+| innodb_io_capacity_max           | 2000       |
+| innodb_max_dirty_pages_pct       | 90.000000  |
+| innodb_max_dirty_pages_pct_lwm   | 10.000000  |
+| innodb_max_purge_lag             | 0          |
+| innodb_max_purge_lag_delay       | 0          |
+| innodb_max_undo_log_size         | 1073741824 |
+| innodb_online_alter_log_max_size | 134217728  |
++----------------------------------+------------+
+11 rows in set (0.01 sec)
+```
+
+innodb_online_alter_log_max_size : 线上对表进行alter操作, 会记录到内存日志(128M)中,如果超过大小, alter操作会报错.
+
+**修改innodb_online_alter_log_max_size (全局变量)**
+
+```shell
+(root@localhost) [test]> set global innodb_online_alter_log_max_size=512*1024*1024;
+Query OK, 0 rows affected (0.00 sec)
+```
+
+```shell
+[mysqld]
+port=3306
+user=mysql
+datadir=/mydata/mysql_test_data
+log_error=error.log
+#sql_mode='XXXXX'  mysql8默认即可
+
+# innodb
+innodb_buffer_pool_size=1G
+innodb_log_file_size=128M
+innodb_online_alter_log_max_size=512M  # 线上可调整为1G
+
+# session memory
+sort_buffer_size=32M
+tmp_table_size=32M
+
+# charset mysql8默认utf8mb4
+#character_set_server=utf8mb4
+```
+
+
+
+##### 3.主键索引
+
+IOT索引组织表(主键索引) : 叶子节点存有完整数据, 非叶子节点存有(key,port)键值对,port为6字节(InnoDB中6字节)
+
+
+
+一张表一定要有主键, 没有主键不满足一范式
+
+
+
+##### 4.非主键索引
+
+非主键索引: 叶子节点存放的是(索引列,主键)键值对, 非叶子节点存放的是(key,port)键值对,port为6字节.
+
+
+
+假设: 表A,主键字段为8字节, 每行数据300字节, 页大小为16K,则:
+
+数高为1,能存多少数据     16K/300 ≈ 50
+
+数高为2,能存多少数据     16K/(8+6) * (16K/300)  ≈  5W
+
+数高为3,能存多少数据	  16K/(8+6) \*16K/(8+6)\* (16K/300)   ≈ 5000W
+
+
+
+##### 5.堆表与索引组织表
+
+堆表: 数据与索引分开,叶子节点上存放的是数据指针
+
+索引组织表: 主键索引上有数据
+
+
+
+优缺点:
+
+
+
+<=> : 可以判断null值和非null值
+
+ 
+
+
+
+##### 6.索引创建原则
+
+```sql
+-- 在orders表创建索引
+alter table orders add index idx_o_totalprice(o_totalprice);
+```
+
+高选择度的列
+
+
+
+查询索引相关信息
+
+<!-- 注意:CARDINALITY: 148740为预估值 -->
+
+```shell
+(root@localhost) [information_schema]> select * from statistics where table_schema='dbt3' limit 1\G;
+*************************** 1. row ***************************
+TABLE_CATALOG: def
+ TABLE_SCHEMA: dbt3
+   TABLE_NAME: customer
+   NON_UNIQUE: 0
+ INDEX_SCHEMA: dbt3
+   INDEX_NAME: PRIMARY
+ SEQ_IN_INDEX: 1
+  COLUMN_NAME: c_custkey
+    COLLATION: A
+  CARDINALITY: 148740
+     SUB_PART: NULL
+       PACKED: NULL
+     NULLABLE: 
+   INDEX_TYPE: BTREE
+      COMMENT: 
+INDEX_COMMENT: 
+   IS_VISIBLE: YES
+   EXPRESSION: NULL
+1 row in set (0.01 sec)
+```
+
+表相关信息
+
+<!-- 注意:TABLE_ROWS: 148740为预估值 -->
+
+```shell
+(root@localhost) [information_schema]> select * from tables where table_schema='dbt3' and table_name = 'customer' limit 3\G;
+*************************** 1. row ***************************
+  TABLE_CATALOG: def
+   TABLE_SCHEMA: dbt3
+     TABLE_NAME: customer
+     TABLE_TYPE: BASE TABLE
+         ENGINE: InnoDB
+        VERSION: 10
+     ROW_FORMAT: Dynamic
+     TABLE_ROWS: 148740
+ AVG_ROW_LENGTH: 201
+    DATA_LENGTH: 29949952
+MAX_DATA_LENGTH: 0
+   INDEX_LENGTH: 3686400
+      DATA_FREE: 0
+ AUTO_INCREMENT: NULL
+    CREATE_TIME: 2021-06-01 11:03:35
+    UPDATE_TIME: NULL
+     CHECK_TIME: NULL
+TABLE_COLLATION: latin1_swedish_ci
+       CHECKSUM: NULL
+ CREATE_OPTIONS: 
+  TABLE_COMMENT: 
+1 row in set (0.01 sec)
+```
+
+
+
+##### 7.复合索引
+
+(a,b) : 对于a 是有序的, 对于(a,b) 是有序的.
+
+(a,b,c): 对于a有排序, 对(a,b)有排序,对(a,b,c)有排序
+
+```SQL
+-- 使用索引
+select * from t where a = ?;
+select * from t where a = ? and b = ?;
+-- 不会使用索引
+select * from t where b = ?;
+
+-- 会使用索引
+select * from t where a = ? order by b;
+```
+
+查找排序多的sql
+
+```SQL
+(root@localhost) [sys]> select * from statements_with_sorting limit 3\G;
+```
+
+##### 8.覆盖索引
+
+走二级索引,不需要回表的SQL
+
+```sql
+-- (key1,key2)
+select primary key,key2 from t where key1 = xxx;
+
+-- 例子: (userid,buy_date)
+select count(1) from buy_log 
+               where buy_date between '2021-01-01' and '2021-05-01';
+-- 查看执行计划,发现会走索引 Using index 索引覆盖               
+```
+
+
+
+##### 9.冗余索引
+
+冗余索引   sys/schema_redundant_indexes
+
+
+
+##### 10.索引未使用
+
+-- 显示没有使用过的索引
+
+```shell
+(root@localhost) [sys]> select * from schema_unused_indexes;
+```
+
+-- 修改索引不可见8.0
+
+-- 可以让SQL查询时,不适用该索引
+
+```sql
+alter table t alter index index_name invisible 
+```
+
+
+
+##### 11.降序索引
+
+
+
+oltp: 在线事务处理
+
+olap: 在线分析(报表等)
+
+
+
+==问题==
+
+1. 存储引擎不是InnoDB的有哪些
+
+2. 表中没有主键的表
+
+3. 索引设计不合理的
+
+4. 索引没有使用的
+
+5. 字符集不是utf8的
+
+6. 冗余索引   sys/schema_redundant_indexes
+
+   ```shell
+   (root@localhost) [sys]> select * from schema_redundant_indexes limit 1\G;
+   *************************** 1. row ***************************
+                 table_schema: dbt3
+                   table_name: lineitem
+         redundant_index_name: i_l_orderkey
+      redundant_index_columns: l_orderkey
+   redundant_index_non_unique: 1
+          dominant_index_name: PRIMARY
+       dominant_index_columns: l_orderkey,l_linenumber
+    dominant_index_non_unique: 0
+               subpart_exists: 0
+               sql_drop_index: ALTER TABLE `dbt3`.`lineitem` DROP INDEX `i_l_orderkey`
+   1 row in set (0.01 sec)
+   ```
+
+
+
+##### 12.索引倾斜
+
+
+
+##### 13.函数索引
+
+##### 14.倒排索引
+
+
+
+##### 15.全文索引
+
+1. 概述
+
+* 搜索引擎的实现核心技术, 搜索类似 where  col  like '%XXX%';
+
+* 首先需要通过分词进行各词的提取
+* 支持在varchar,char,text 等类型上创建全文索引
+* MySQL 5.6 版本仅MyISAM支持全文索引
+* MySQL 5.6 版本仅InnoDB引擎支持全文索引
+* MySQL 5.7 版本支持中文, 日文的全文索引 (真正生产环境可用)
+
+* 目前一张表只能有一个全文索引
+* 添加全文索引时, 表是只读的, 不可写入与更新
+
+
+
+2. 创建全文索引
+
+   ```sql
+   alter table t add fulltext index idx_xxx (name,age)
+   ```
+
+3. 全文索引查询
+
+   * 不能使用LIKE 进行
+   * 需要使用全文索引的语法
+
+   ```SQL
+   select * from table1 where match (name,age) against ('database' in natural language mode);
+   ```
+
+   
+
+##### 16,地理空间索引
+
+1. 概述
+   * MySQL 5.7 版本仅MyISAM引擎支持地理空间索引
+   * MySQL 5.7 版本InnoDB引擎支持地理空间索引
+
+
+
+
+
+
+
+------
+
+#### SQLJOIN
+
+##### 1.小表驱动大表
+
+优化器倾向于使用小表做驱动表.
+
+```SQL
+select xxx  from t1,t2 on t1.a = t2.a where t1.status = 1 and t2.xx = xx;
+```
+
+先执行过滤,再看t1和t2表哪个是小表, 并将该表作为驱动表.
+
+
+
+##### 2.无索引的表连接
+
+* block nested-loop join
+
+  * 优化simple  nested-loop  join
+  * 减少内部表的扫描次数
+
+* join_buffer_size
+
+  ```shell
+  (root@localhost) [(none)]> show variables like 'join%';
+  +------------------+--------+
+  | Variable_name    | Value  |
+  +------------------+--------+
+  | join_buffer_size | 262144 |
+  +------------------+--------+
+  1 row in set (0.04 sec)
+  ```
+
+  
+
+
+
+
+
+#### Explain
+
+##### 1.简介
+
+* 5.6版本支持DML语句
+
+* 5.6版本开始支持JSON格式输出
+
+  ```shell
+  (root@localhost) [dbt3]> explain format=json select * from orders where o_orderdate > '1998-01-01'\G;
+  *************************** 1. row ***************************
+  EXPLAIN: {
+    "query_block": {
+      "select_id": 1,
+      "cost_info": {
+        "query_cost": "159690.83"
+      },
+      "table": {
+        "table_name": "orders",
+        "access_type": "ALL",
+        "possible_keys": [
+          "i_o_orderdate"
+        ],
+        "rows_examined_per_scan": 1481818,
+        "rows_produced_per_join": 317654,
+        "filtered": "21.44",
+        "cost_info": {
+          "read_cost": "127925.43",
+          "eval_cost": "31765.40",
+          "prefix_cost": "159690.83",
+          "data_read_per_join": "41M"
+        },
+        "used_columns": [
+          "o_orderkey",
+          "o_custkey",
+          "o_orderstatus",
+          "o_totalprice",
+          "o_orderDATE",
+          "o_orderpriority",
+          "o_clerk",
+          "o_shippriority",
+          "o_comment"
+        ],
+        "attached_condition": "(`dbt3`.`orders`.`o_orderDATE` > DATE'1998-01-01')"
+      }
+    }
+  }
+  1 row in set, 1 warning (0.00 sec)
+  ```
+
+  <!-- query_cost: 成本 -->
+
+  指定索引
+
+  ```shell
+  (root@localhost) [dbt3]> explain format=json select * from orders force index(i_o_orderdate)  where o_orderdate >'1998
+  *************************** 1. row ***************************
+  EXPLAIN: {
+    "query_block": {
+      "select_id": 1,
+      "cost_info": {
+        "query_cost": "240294.70"
+      },
+      "table": {
+        "table_name": "orders",
+        "access_type": "range",
+        "possible_keys": [
+          "i_o_orderdate"
+        ],
+        "key": "i_o_orderdate",
+        "used_key_parts": [
+          "o_orderDATE"
+        ],
+        "key_length": "4",
+        "rows_examined_per_scan": 317654,
+        "rows_produced_per_join": 317654,
+        "filtered": "100.00",
+        "index_condition": "(`dbt3`.`orders`.`o_orderDATE` > DATE'1998-01-01')",
+        "using_MRR": true,
+        "cost_info": {
+          "read_cost": "208529.30",
+          "eval_cost": "31765.40",
+          "prefix_cost": "240294.70",
+          "data_read_per_join": "41M"
+        },
+        "used_columns": [
+          "o_orderkey",
+          "o_custkey",
+          "o_orderstatus",
+          "o_totalprice",
+          "o_orderDATE",
+          "o_orderpriority",
+          "o_clerk",
+          "o_shippriority",
+          "o_comment"
+        ]
+      }
+    }
+  }
+  1 row in set, 1 warning (0.00 sec)
+  ```
+
+  
+
+##### 2.Explain输出
+
+| 列            | 含义                         |
+| :------------ | :--------------------------- |
+| id            | 执行计划的id标志             |
+| select_type   | SELECT的类型                 |
+| table         | 输出记录的表                 |
+| partitions    | 符合的分区                   |
+| type          | JOIN的类型                   |
+| possible_keys | 优化器可能使用到的索引       |
+| key           | 优化器实际选择的索引         |
+| key_len       | 使用索引的字节长度           |
+| ref           | 进行比较的索引列             |
+| rows          | 优化器预估的记录数量         |
+| filtered      | 根据条件过滤得到记录的百分比 |
+| Extra         | 额外显示选项                 |
+
+
+
+```SQL
+explain 
+select *
+  from part 
+ where p_partkey in (select l_partkey 
+                       from lineitem 
+											where l_shipdate between '1997-01-01' and '1997-02-01')	
+ order by p_retailprice desc
+ limit 10;
+```
+
+```shell
+1	SIMPLE	part		ALL	PRIMARY				198403	100.00	Using filesort
+1	SIMPLE	<subquery2>		eq_ref	<auto_distinct_key>	<auto_distinct_key>	5	dbt3.part.p_partkey	1	100.00	
+2	MATERIALIZED	lineitem		range	i_l_shipdate,i_l_suppkey_partkey,i_l_partkey	i_l_shipdate	4		136858	100.00	Using index condition; Using MRR
+```
+
+MySQL中: in中的子查询,得到结果后会存入一张表中,并去重, 优化成join查询.
+
+
+
+**type介绍**
+
+system  :  只有一行记录的系统
+
+const  :  最多只有一行返回记录,如主键查询
+
+eq_ref  :  通过唯一键进行JOIN
+
+ref  :  使用普通索引进行查询
+
+fulltext  :  使用全文索引进行查询
+
+ref_or_null  :  和ref类似,使用pub索引进行查询,但要查询null值
+
+index_merge  :  or查询会使用到的类型
+
+unique_subquery  :  子查询的列是唯一索引
+
+index_subquery  :  子查询的列是普通索引
+
+range  :  范围扫描
+
+index  :  索引扫描
+
+ALL :  全表扫描
+
+
+
+**Extra**
+
+Using filesort  :  需要使用额外的排序得到结果
+
+Using index   :  优化器只需要使用索引就能得到结果
+
+Using index condition :  优化器使用Index Condition Pushdown优化
+
+Using index for group by : 优化器只需要使用索引就能处理group by 或 distinct语句
+
+Using join buffer  :  优化器需要使用join buffer , join_buffer_size
+
+Using MRR :  优化器使用MRR优化
+
+Using temporary :  优化器需要使用临时表
+
+Using where :  优化器使用where过滤
+
+
+
+
+
+------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------
+
+
+
+####  错误及解决方案
+
+##### 启动时,找不到文件
+
+`Starting MySQL ERROR! Couldn't find MySQL server (/usr/local/mysql/bin/mysqld_safe)`
+
+在/etc/my.cnf文件中加入
+
+[mysqld]
+
+basedir=/usr/local/mysql目录
+
+
+
+##### 创建新用户未指定密码, 再删除时报错
+
+`ERROR 1227 (42000): Access denied; you need (at least one of) the SYSTEM_USE`
+
+修改/etc/my.cnf
+
+[mysqld]
+
+skip-grant-tables
+
+
+
+重启mysql
+
+systemctl restart mysql
+
+登录mysql,  刷新权限
+
+flush  privileges;
+
+给用户指定密码
+
+alter  user  'dev'@'%'  idetified by  '123';
+
+删除用户
+
+drop  user  'dev'@'%' ;
+
+把配置文件修改回来
+
+重新启动mysql;
+
+
+
+#### root用户忘记密码
+
+* 使用skip-grant-tables系统参数启动mysqld
+
+```sql
+在启动mysqld时如果加上系统参数skip-grant-tables将会跳过读取系统数据库mysql的授权表,此时任何用户都可以不用密码登录MySQL,并且可以访问或修改MySQL中的任何数据.通常使用这个系统参数启动mysqld时也会加上系统参数skip-networking禁止远程连接,但从MySQL8开始使用系统参数skip-grant-tables时MySQL会自动加上系统参数skip-networking.
+
+可以在命令行加上 --skip-grant-tables系统参数,或者修改启动用的参数文件,如: /etc/my.cnf,
+在[mysqld]下面加上skip-grant-tables后再重新启动mysqld.
+这个时候任何用户口可以不用登陆MySQL,可以修改任何数据.
+
+mysqld --no-defaults --datadir=/mydata/mysql_data --skip-grant-tables --user=mysql
+重开一个窗口,不用密码,即可登陆成功
+此时远程连接时关闭的.
+```
+
+```shell
+(root@localhost) [(none)]> show variables like 'skip_networking';
++-----------------+-------+
+| Variable_name   | Value |
++-----------------+-------+
+| skip_networking | ON    |
++-----------------+-------+
+1 row in set (0.03 sec)
+```
+
+修改密码
+
+```sql
+启动完成后即可不用密码登录,登录后使用下面的SQL语句修改mysql.user表里面的字段authentication_string:
+mysql> update mysql.user set authentication_string=password('admin') where user = 'root';
+修改完成后需要使用下面的命令将权限表重新载入:
+mysql> flush privileges;
+也可以使用mysqladmin flush-privileges 或 mysqladmin reload载入权限表.
+
+但在MySQL8.0中,这种方式已经不可行,因为其已移除了password()函数.可以使用alter user 的命令修改密码,但注意要载入权限表后才能alter user, 如下:
+mysql> flush privileges;
+mysql> alter user root@localhost identified by 'admin';
+```
+
+
+
+* 使用系统参数init-file修改root用户的密码
+
+```sql
+采用跳过载入授权表的方法启动mysqld会让MySQL处于非常不安全的状态,因此此时任何用户均可修改数据库里的任何数据. 但采用系统参数init-file修改root用户的密码就安全很多,而且只需要重启一次MySQL实例.
+
+先关闭实例, 再创建一个SQL文件, 例如chpw.sql, 在文件里写上修改root密码的语句如下: alter user root@localhost identified by 'admin';
+然后使用init-file系统参数启动实例,这个系统参数指向修改root密码的SQL文件, 例如:
+$ mysqld_safe --init-file=/tmp/chpw.sql &
+也可以在参数配置我呢间里面加入下面的一行再启动实例:
+init-file=/tmp/chpw.sql
+MySQL实例启动时会自动执行这个SQL语句,启动完成密码即修改完毕.
+```
+
+```shell
+[root@centos_04 /]# cat /tmp/chpw.sql
+alter user root@localhost identified by 'admin222';
+```
+
+```shell
+[root@centos_04 /]# mysqld --no-defaults --datadir=/mydata/mysql_data --user=mysql --init-file=/tmp/chpw.sql &
+[root@centos_04 /]# 2021-12-13T03:19:27.101560Z 0 [System] [MY-010116] [Server] /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64/bin/mysqld (mysqld 8.0.24) starting as process 3154
+2021-12-13T03:19:27.113544Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2021-12-13T03:19:27.249139Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2021-12-13T03:19:27.371904Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /tmp/mysqlx.sock
+2021-12-13T03:19:27.420517Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2021-12-13T03:19:27.420717Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2021-12-13T03:19:27.449088Z 0 [System] [MY-010931] [Server] /usr/local/mysql-8.0.24-linux-glibc2.12-x86_64/bin/mysqld: ready for connections. Version: '8.0.24'  socket: '/tmp/mysql.sock'  port: 3306  MySQL Community Server - GPL.
+```
+
+```shell
+[root@centos_04 /]# mysql -uroot -padmin222
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 9
+Server version: 8.0.24 MySQL Community Server - GPL
+```
+
+
+
+### MySQL启动相关参数
+
+- basedir=/usr/local/mysql
+
+  代表MySQL安装路径
+
+- datadir=/usr/local/mysql/data
+
+  代表MySQL的数据文件路径
+
+- port=3306
+
+  指定MySQL的侦听端口
+
+- log-error=/usr/local/mysql/data/M00006.err
+
+  记录MySQL启动日志和运行错误日志
+
+- bind-address (默认是*)
+
+  \* 代表接受所有来自IPV4, IPV6主机网卡的TCP/IP链接
+
+  0.0.0.0  代表接受所有来自IPV4主机网卡的TCP/IP链接
+
+  指定的IP如 127.0.0.1 , 代表只接受此地址请求的TCP/IP链接
+
+
+
+- character-set-server (默认是latin1)
+
+  指定MySQL的字符集
+
+- collation-server (默认是latin1_swedish_ci)
+
+  指定MySQL的排序规则
+
+- default-storge-engine (默认是InnoDB)
+
+  指定MySQL的默认存储引擎
+
+- default-time-zone
+
+  指定默认时区, 如果没有指定则和系统默认时区一致
+
+- open-file-limit (默认5000, 表建得越多, 这个值应该调越大)
+
+  指定MySQL运行过程中可以打开的文件数, 避免出现"Too many open files" 报错
+
+- pid-file=/usr/local/mysql/data/M00006.pid
+
+  指定MySQL进程对应的程序ID文件, 默认是在数据文件目录里
+
+- skip-grant-tables
+
+  指定避开MySQL内部的权限表启动服务
+
+- tmpdir
+
+  指定临时表文件的存放路径
+
+
+
+
+
+### 设置系统参数
+
+- MySQL的系统参数当然是对MySQL性能影响最大的因素.
+- MySQL的系统参数保存在参数文件中,不同平台的参数文件位置不一样,RedHat Linux中的默认参数文件位置是 /etc/my.cnf,  Debian Linux中的默认参数文件位置是/etc/mysql/my.cnf.
+- MySQL 8一共六百多个系统参数, 但对系统性能影响大的参数只有几十个.
+- 参数说明参见:   https://dev.mysql.com/doc/refman/8.0/en/server-system-variable-reference.html
+
+
+
+#### 全局级和回话级参数
+
+MySQL的系统参数根据作用范围可以分为全局级和回话级, 全局级的系统参数对实例的所有回话起作用, 回话级的系统参数只对当前回话起作用, 在这两个级别修改系统参数的例子如下:
+
+```shell
+mysql> set session binlog_rows_query_log_events=on;
+mysql> set global binlog_rows_query_log_events=on;
+```
+
+其中session可以省略.
+
+
+
+修改全局系统参数只对修改后连接到MySQL的会话生效, 在修改之前已经建立的回话还保持原来的参数值, 例如下面命令修改一个全局系统参数:
+
+```shell
+mysql> set global sort_buffer_size=16*1024*1024;
+```
+
+下面的命令检查这个系统参数的全局级和回话级的值:
+
+```shell
+mysql> select @@global.sort_buffer_size,@@session.sort_buffer_size;
+```
+
+```
+(root@localhost) [(none)]> select @@global.sort_buffer_size,@@session.sort_buffer_size;
++---------------------------+----------------------------+
+| @@global.sort_buffer_size | @@session.sort_buffer_size |
++---------------------------+----------------------------+
+|                  16777216 |                     262144 |
++---------------------------+----------------------------+
+1 row in set (0.00 sec)
+```
+
+发现全局级的参数值已经改过来了, 而回话级的参数值没有变.
+
+
+
+有一些系统参数只能是全局的, 在回话级修改这类参数会出错, 例如:
+
+```shell
+mysql> set log_error_verbosity=2;
+```
+
+```
+(root@localhost) [(none)]> set log_error_verbosity=2;
+ERROR 1229 (HY000): Variable 'log_error_verbosity' is a GLOBAL variable and should be set with SET GLOBAL
+```
+
+
+
+#### 查询其它回话的参数
+
+如果要查询其它回话的参数可以在performance_schema.variables_by_thread视图中查询, 例如下面的SQL语句查询所有回话的事务隔离级别如下:
+
+```shell
+mysql> select * from performance_schema.variables_by_thread where variable_name = 'transaction_isolation';
+```
+
+```
+(root@localhost) [test]> select * from performance_schema.variables_by_thread where variable_name = 'transaction_isolation';
++-----------+-----------------------+-----------------+
+| THREAD_ID | VARIABLE_NAME         | VARIABLE_VALUE  |
++-----------+-----------------------+-----------------+
+|        49 | transaction_isolation | REPEATABLE-READ |
+|        54 | transaction_isolation | REPEATABLE-READ |
++-----------+-----------------------+-----------------+
+2 rows in set (0.00 sec)
+```
+
+
+
+#### 静态参数和动态参数
+
+MySQL的系统参数还可以分为静态参数和动态参数, 动态参数可以MySQL运行中进行修改, 静态参数在MySQL启动后无法修改, 例如:
+
+```shell
+mysql> set auto_generate_certs=on;
+```
+
+```
+(root@localhost) [test]> set auto_generate_certs=on;
+ERROR 1238 (HY000): Variable 'auto_generate_certs' is a read only variable
+```
+
+
+
+#### 系统参数设置为default
+
+如果把回话级系统参数设置为default, 对应的是全局级系统参数值. 下面两个设置回话级参数的语句效果是一样的:
+
+```shell
+mysql> set @@session.max_join_size=DEFAULT;
+mysql> set @@session.max_join_size=@@GLOBAL.max_join_size;
+```
+
+如果把全局级系统参数设置default, 将把系统参数恢复为MySQL内置的默认值, 而不是像很多人认为的是参数文件里面的设置值.
+
+
+
+#### 持久化参数设置
+
+在系统参数设置时, 一个容易犯的错误是在MySQL运行时修改了参数值, 但没有同时修改参数文件里面的配置, 当MySQL重新启动后, 参数文件里的旧值生效, 之前的修改丢掉了. 在MySQL8里, MySQL推出了让参数持久化的命令, 可以让在联机时修改的系统参数在重新启动后仍然生效, 例如:
+
+```shell
+mysql> set persist max_connections=1000;
+或者
+mysql> set @@persist.max_connections=1000;
+```
+
+如果想让系统参数在本次MySQL运行时不生效, 只是在下次启动时生效, 可以使用下面的命令:
+
+```shell
+mysql> set persist_only back_log=100;
+或者
+mysql> set @@persist_only.back_log=100;
+```
+
+持久化的系统参数以JSON格式保存在数据目录的mysqld-auto.cnf文件中, 例如
+
+可以通过reset  persist命令来清除mysqld-auto.cnf文件中的所有配置, 也可以通过reset  persist接参数名的方式来清除某个指定的配置参数.
+
+
+
+#### 参数值的来源
+
+现在系统参数可以从多个来源进行设置, 有时分不清参数到底来自哪里, 到底哪种方式的设置在起作用,这时可以查询视图performance_schema.variables_info 找到相关信息, 例如:
+
+```shell
+mysql> select variable_name,variable_source as source,variable_path,set_time,set_user as user, set_host from performance_schema.variables_info where variable_name = 'max_connections' or variable_name='socket'\G;
+```
+
+```
+*************************** 1. row ***************************
+variable_name: max_connections
+       source: COMPILED
+variable_path: 
+     set_time: NULL
+         user: NULL
+     set_host: NULL
+*************************** 2. row ***************************
+variable_name: socket
+       source: COMPILED
+variable_path: 
+     set_time: NULL
+         user: NULL
+     set_host: NULL
+2 rows in set (0.00 sec)
+```
+
+
+
+#### 查询参数文件
+
+查询哪个参数文件在起作用
+
+```shell
+mysql> select variable_path,variable_source,count(*) from performance_schema.variables_info where length(variable_path)!=0 group by variable_path,variable_source;
+```
+
+```
++---------------+-----------------+----------+
+| variable_path | variable_source | count(*) |
++---------------+-----------------+----------+
+| /etc/my.cnf   | GLOBAL          |        1 |
++---------------+-----------------+----------+
+1 row in set (0.01 sec)
+```
+
+
+
+### 内存的分配
+
+#### 计算MySQL在负载高峰时占用的总内存
+
+```shell
+msyql> select (@@key_buffer_size + @@innodb_buffer_pool_size + @@innodb_log_buffer_size + @@binlog_cache_size + @@max_connections * (@@read_buffer_size + @@read_rnd_buffer_size + @@sort_buffer_size + @@join_buffer_size + @@thread_stack + @@tmp_table_size)) / (1024*1024*1024) as max_memory_gb;
+```
+
+```
++---------------+
+| max_memory_gb |
++---------------+
+|        4.9997 |
++---------------+
+1 row in set (0.00 sec)
+```
+
+在实际工作中, 这里算出来的数值通常偏大, 因为所有的线程都同时用到设定内存分配的最大值的情况几乎不会出现, 每个线程如果只是处理简单的工作, 大约只需要 256KB 的内存. 通过查询
+
+sys.memory_global_total视图可以得到当前MySQL实例使用内存总和.
+
+
+
+#### 系统参数key_buffer_size
+
+系统参数 key_buffer_size 从字面上理解是指定索引缓存的大小, 需要注意的是它只对 MyISAM表起作用, 对InnoDB表无效. 这个参数在字面上并没有明确加上 MyISAM, 是因为它是在MyISAM 作为 MySQL默认存储引擎的时代产生的. 由于现在通常用的是 InnoDB 表, 因此通常不需要调整这个参数.
+
+
+
+#### 参数innodb_buffer_pool_size
+
+- MySQL 的默认配置是针对内存为 512MB 的虚拟机设计的, innodb_buffer_size 的默认值是128MB, 这个值在生产中通常都太小.
+- 当一台服务器被一个 MySQL 实例独占时, 通常 innodb_buffer_size 可以设置为内存的 70% 左右.
+- 如果在同一台服务器上还有 其他的 MySQL 或别的应用, 设置 innodb_buffer_size 的大小就要考虑更多的因素, 一个重要的因素是 InnoDB 的总数剧量(包括表和索引).
+
+
+
+#### InnoDB的总数据量(包括表和索引)
+
+```shell
+mysql> select count(*) as tables, concat(round(sum(table_rows)/1000000,2),'M') num_row, concat(round(sum(data_length)/(1024*1024*1024),2),'G') data, concat(round(sum(index_length)/(1024*1024*1024),2),'G') idx, concat(round(sum(data_length + index_length)/(1024*1024*1024),2),'G') total_size from information_schema.tables where engine='InnoDB';
+```
+
+把参数 innodb_buffer_pool_size 设置成超过 InnoDB 的总数据量是没有意义的, 通常设置到能容纳 InnoDB 的活跃数据就够了.
+
+
+
+#### InnoDB缓存池的命中率
+
+两个 MySQL 的状态参数可以计算出它的命中率:
+
+(1)  Innodb_buffer_pool_read_requests : 表示向 InnoDB 缓存池进行逻辑读的次数.(读内存)
+
+(2)  InnoDB_buffer_pool_reads : 表示从物理磁盘中读取数据的次数.(读磁盘)
+
+InnoDB缓存池的命中率的计算公式如下:
+
+InnoDB缓存池命中率 = (Innodb_buffer_pool_read_requests - Innodb_buffer_pool_reads) / Innodb_buffer_pool_read_requests * 100%.
+
+例子:
+
+```shell
+mysql> show status like 'Innodb_buffer_pool_read%s';
+```
+
+```
++----------------------------------+-------+
+| Variable_name                    | Value |
++----------------------------------+-------+
+| Innodb_buffer_pool_read_requests | 16739 |
+| Innodb_buffer_pool_reads         | 864   |
++----------------------------------+-------+
+2 rows in set (0.00 sec)
+
+(root@localhost) [(none)]> select (16739 - 864)/16739 ;
++---------------------+
+| (16739 - 864)/16739 |
++---------------------+
+|              0.9484 |
++---------------------+
+1 row in set (0.00 sec)
+```
+
+
+
+#### 状态参数 Innodb_buffer_pool_reads
+
+代表MySQL不能从 InnoDB 缓存池读到需要的数据而不得不从硬盘中进行读的次数, 使用下面的命令查询MySQL每秒从磁盘读的次数 : 
+
+$ mysqladmin  extended-status  -ri1 | grep innodb_buffer_pool_reads
+
+把这个值和硬盘的I/O 能力进行对比, 如果接近了硬盘处理I/O 的上限, 那么从操作系统层查看到的CPU用于等待I/O 的时间 (IO wait , 例如 vmstat 中的cpu的 wa 或 iostat 中的 % iowait) 会变长, 这时硬盘I/O就成了性能的瓶颈, 增大InnoDB缓存池可能会减少MySQL访问硬盘的次数, 提高数据库的性能.
+
+
+
+#### 对设置 InnoDB 缓存大小的考虑
+
+- 太小的缓存池可能会导致数据页被频繁地从磁盘读取到内存, 引起性能急剧下降.
+- 但如果设置得过大, 又可能会造成内存被交换到位于硬盘的内存交换分区, 引起性能急剧下降.
+- 这两种情况比较起来, 把InnoDB 缓存池设置小一些对性能的负面影响并不特别大. 实际生产中,mysqld进程崩溃的一个常见原因是操作系统的内存消耗尽, 操作系统被迫把mysqld进程杀死.
+
+
+
+#### 设置InnoDB 缓存大小
+
+早期调整 innodb_buffer_pool_size 需要重新启动 MySQL, 从MySQL 5.7 后, 这个参数可以动态地进行调整, 例如下面的命令吧这个参数设置为256MB : 
+
+```shell
+mysql> set persist innodb_buffer_pool_size=256*1024*1024;
+```
+
+
+
+#### innodb_buffer_pool_instances系统参数
+
+一个和相关innodb_buffer_pool_size 的参数是 innodb_buffer_pool_instances , 它设定把 InnoDB 缓存池分成几个区, 当 innodb_buffer_pool_size 大于1GB时, 这个参数才会起作用, 对于大的 InnoDB 缓存池, 建议把它设置得大一些, 这样可以减少获取访问 InnoDB 缓存池时需要上锁的力度, 以提高并发度.
+
+
+
+### InnoDB日志
+
+InnoDB日志保存着已经提交的数据变化, 用于在崩溃恢复时把数据库的变化恢复到数据文件,除了崩溃恢复,其他时候都不会读日志文件. 
+
+向日志文件写数据的方式是顺序写,  这比离散写的效率要高很多, 而向数据文件写数据通常是离散写比较多.
+
+日志缓冲区是一个内存缓冲区, InnoDB使用它来缓冲重做日志事件, 然后再将其写入磁盘.
+
+日志缓冲区大小由系统参数innodb_log_buffer_size控制, 默认是16MB, 在大多数情况下是够用的.
+
+如果有大型事务或大量较小的并发事务, 可以考虑增大innodb_log_buffer_size, 这个参数在MySQL 8中可以动态设置.
+
+默认在datadir下有两个48MB的日志文件 ib_logfile0和ib_logfile1.
+
+
+
+### 日志产生量
+
+- InnoDB的日志产生量是衡量数据库繁忙程度的重要指标, 也是设置日志文件大小的依据. 查询日志产生量的相关信息有两个方法.
+- 第一个方法是查询 information_schema.innodb_metrics 或 sys.metrics视图中的对应计量值.
+- 第二个方法是使用show engine innodb status 命令查询日志产生量的相关信息, 这些信息在输出的LOG部分,这种方法不需要激活InnoDB中的相关计量.
+
+
+
+#### 查询日志视图
+
+使用下面的命令可以激活这些计量:
+
+```shell
+mysql> set global innodb_monitor_enable = 'log_lsn_%';
+```
+
+```
+(root@localhost) [(none)]> set global innodb_monitor_enable = 'log_lsn_%';
+Query OK, 0 rows affected (0.00 sec)
+```
+
+```shell
+mysql> select name,count,status from information_schema.innodb_metrics where name like 'log_lsn%';
+```
+
+```
+(root@localhost) [(none)]> select name,count,status from information_schema.innodb_metrics where name like 'log_lsn%';
++--------------------------------+----------+---------+
+| name                           | count    | status  |
++--------------------------------+----------+---------+
+| log_lsn_last_flush             | 18309499 | enabled |
+| log_lsn_last_checkpoint        | 18309499 | enabled |
+| log_lsn_current                | 18309499 | enabled |
+| log_lsn_archived               |        0 | enabled |
+| log_lsn_checkpoint_age         |        0 | enabled |
+| log_lsn_buf_dirty_pages_added  | 18309499 | enabled |
+| log_lsn_buf_pool_oldest_approx |        0 | enabled |
+| log_lsn_buf_pool_oldest_lwm    |        0 | enabled |
++--------------------------------+----------+---------+
+8 rows in set (0.00 sec)
+```
+
+这里的log_lsn_checkpoint_age 是当前日志量减去最近一次检查点的日志量, 等于log_lsn_current 减去log_lsn_last_checkpoint , 也就是日志文件的使用量, 因为对日志文件的写入时循环覆盖的, 检查点之前的日志都已经写入数据文件了, 不再需要了, 这里看到的日志文件的使用量为0.
+
+
+
+#### 设置日志文件大小考虑
+
+MySQL默认在数据目录下有两个48MB的日志文件, ib_logfile0 和 ib_logfile1. 对于繁忙的数据库, 这样的日志文件通常太小, 因为当日志文件写满时, 会触发检查点, 把内存中的数据写入磁盘, 小的日志文件会频繁地触发检查点, 增加写入磁盘频率, 引起系统性能下降.
+
+大的日志文件能容纳的数据变化量大, 会造成数据库在崩溃恢复是消耗时较长, 但新的MySQL版本的崩溃恢复速度已经很快了, 因此把日志文件设置得大一些通常不会错, 甚至可以设置得和InnoDB缓存池一样大.
+
+另外一些备份工具要备份在备份过程中产生的重做日志, 如果日志文件过小, 备份工具备份日志的速度跟不上日志产生的速度时, 需要备份的日志可能已经被覆盖了, 例如XtraBackup工具可能会遇到下面的错误:
+
+xtrabackup: error: it looks like InnoDB log has wrapped around before xtrabackup could process all records due to either log copying being too slow, or log files being too small.
+
+
+
+#### 计算日志产生量
+
+设置pager只显示lsn:
+
+```shell
+mysql> pager grep sequence
+```
+
+查询当前的lsn:
+
+```shell
+mysql> show engine innodb status \G
+```
+
+休眠一分钟:
+
+```shell
+mysql> select sleep(60);
+```
+
+再次查询当前的lsn:
+
+```shell
+mysql> show engine innodb status \G
+```
+
+取消设置pager:
+
+```shell
+mysql> nopager
+```
+
+根据一分钟的采样, 可以计算一小时的日志量:
+
+```shell
+mysql> select round((1455007613 - 1439955157) * 60 / 1024/1024) one_hour_log(MB);
+```
+
+
+
+### 参数 innodb_dedicated_server
+
+MySQL 8 中新引进了一个参数 innodb_dedicated_server, 这个参数的默认值是off,就像这个参数名所建议的一样, 当MySQL独占当前服务器资源的时候, 可以把这个参数设置为on, 这是MySQL会自动探测当前服务器的内存大小并设置下面4个参数:
+
+(1) innodb_buffer_pool_size
+
+(2) innodb_log_file_size
+
+(3) innodb_log_files_in_group
+
+(4) innodb_flush_method
+
+其中前面3个参数是根据当前服务器内存大小计算出来的, 这样对运维在虚拟机或云上运行的MySQL很方便, 当调整了内存大小后, MySQL会在启动时自动调整着3个参数, 省去每次手工修改参数的工作.
+
+
+
+#### innodb_buffer_pool_size根据物理内存的设置策略
+
+| 内存大小 | Innodb_buffer_pool_size的值 |
+| :------: | :-------------------------: |
+| 小于1GB  |            128MB            |
+| 1GB到4GB |       物理内存 x 0.5        |
+| 大于4GB  |       物理内存 x 0.75       |
+
+
+
+#### 显示设置的参数优先生效
+
+当参数innodb_dedicated_server 为 ON 时, 如果还显示设置了这些参数, 则显示设置的这些参数会优先生效, 并且在Mysql的错误日志中会记录如下内容:
+
+0 \[Warning\][MY-012360] [InnoDB] Option innodb_dedicated_server is ignored for innodb_log_file_size because innodb_log_file_size=2073034752 is specified explicitly.
+
+显示指定某一个值, 并不会影响另外3个参数的自动设定.
+
+
+
+
+
+
+
+
+
