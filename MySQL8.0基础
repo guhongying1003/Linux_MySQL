@@ -1,0 +1,1439 @@
+### 编码
+
+```
+# 1. ascii编码
+	1个字节表示字母与二进制的对应关系  一共2的8次方 256种
+
+# 2. gb-2312编码
+	gb-2312编码,由国家信息标准委员会制作(1980).
+	gbk编码,对gb-2312进行扩展,包含了中日韩等文字(1995).
+	与二进制做对应关系:
+		单字节表示,用一个字节表示对应关系. 2**8 = 256
+		双字节表示,用两个字节表示对应关系. 2**16 =65536种可能
+
+# 3. unicode
+	unicode也称为万国码,为全球的每个文字都分配一个码位(二进制表示)
+	Ucs2
+	用固定的2个字节去表示一个文字. 2 ** 16 = 65535 种
+	Usc4
+	用固定的4个字节去表示一个文字. 2 ** 32 = 4294967296 种
+	缺点: 浪费空间
+    unicode的应用,在文件存储和网络传输时,不会直接使用unicode,而在内存中会用unicode.
+
+# 4. utf-8编码
+	包含所有文字和二进制的对应关系,全球应用最为广泛的一种编码(站在巨人的肩膀上功成名就)
+	本质上: utf8是对unicode的压缩,用尽量少的二进制去与文字进行对应.
+	unicode码位范围		 utf-8
+	0000-007F           用1个字节表示
+	0080-07FF           用2个字节表示
+	0800-FFFF           用3个字节表示
+	10000-10FFFF        用4个字节表示
+	
+	具体压缩流程:
+	1. 选择转换模板
+		0000-007F           0XXXXXXX
+		0080-07FF           110XXXXX 10XXXXXX
+		0800-FFFF           1110XXXX 10XXXXXX 10XXXXXX
+		10000-10FFFF        11110XXX 10XXXXXX 10XXXXXX 10XXXXXX
+	  例如:
+      	'B' 对用unicode码位为 0042, 那么他应该选择第一个模板.
+        '@' 对应unicode码位为 01E3, 则应该选第二个模板.
+        '武' 对应unicode码位为 6B66, 则应该选第三个模板.
+		 ,对应unicode为 1F606, 则应该选第四个模板.
+	注意: 一般中文选择第三个模板,中文在utf-8中占三个字节.
+    
+    2. 在模板中填入数据
+    - "武" -> 6B66 -> 110 101101 100110
+    - 根据模板去套入数据
+    	1110XXXX 10XXXXXX 10XXXXXX
+    	1110XXXX 10XXXXXX 10100110
+    	1110XXXX 10101101 10100110
+    	1110X110 10101101 10100110
+    	11100110 10101101 10100110
+    在utf-8中 '武' 11100110 10101101 10100110
+```
+
+
+
+### +号的作用
+
+```sql
+JAVA中: 两个操作数多为数值型为运算符
+		只要有一个操作数为字符串为连接符
+MySQL中: 只作运算符
+	select '1' + 2; -- 3
+	select 'a' + 2; -- 2 'a'转换失败, 则会算为0 去计算.
+	select null + [任意]; -- 只要其中一方为null , 则结果为null 
+Oracle中: 使用 || 或 concat() 连接字符串
+```
+
+
+
+### 单引号与双引号
+
+```sql
+-- 以下都可以运行正常
+select * from students where name = 'a';
+select * from students where name = "a";
+select id,name as 姓名 from students where name = 'a';
+select id,name as '姓名' from students where name = 'a';
+select id,name as "姓名" from students where name = 'a';
+```
+
+### 数据类型
+
+```sql
+数值型:
+	整型: tinyint(1字节,-128~127,0~255),smallint(2字节,-32768~32767),
+		 mediumint(3字节,-8388608~8388607), int(4字节,约21亿)
+		 bigint(8字节,)
+	小数:
+			定点型 dec(M,D)或者decimal(M,D)
+			浮点型 float(M,D) 4字节, double(M,D) 8字节
+字符型:
+	char, varchar
+	text, blob(二进制)
+日期型:	
+
+
+# 使用
+-- 插入数值超出范围,会报out of range , 并插入临界值
+-- 默认有符号
+-- 不设置长度,有默认长度
+-- zerofill,长度不够会左边补充0
+create table t(
+	t1 int,
+    t2 int unsigned -- 无符号, 默认有符号
+);
+
+```
+
+#### char与varchar
+
+```sql
+varchar类型用来存储可变长字符串,是最常见的字符串数据类型,它比定长类型更节省空间,因为它仅使用必要的空间.
+另外varchar需要使用1或2个额外字节记录字符串的长度,如果列的最大长度小于等于255字节时,需要1个字节,否则需要2个字节.
+比如,采用Latin1字符集,varchar(10)的列需要11个字节的存储空间,而varchar(1000)列需要1002个字节的存储空间.
+varchar节省了存储空间,所以对性能也有帮助.但由于行是变长的, 在update时可能使行变得比原来更长,这就导致需要做额外的工作. 如果一行占用的空间增长,并且物理数据页内没有更多空间存储时,MyISAM会将行拆成不同的片段存储, InnoDB需要分 列页来进行放到数据页里.
+
+char类型是定长, MySQL总是根据定义的字符串长度分配足够的空间. 当查询char值时,MySQL会删除所有的末尾空格.
+char适合存储很短的字符串,或者所有值都接近同一个长度. 对于经常变更的数据,char也比varchar更好,因为定长的char类型不容易产生碎片.而且对非常短的字符串,char不需要一个额外的字节记录长度.
+
+
+char类型会自动处理字符串末尾空格.
+```
+
+```sql
+(root@localhost) [test]> create table temp(name char(10),name2 varchar(10));
+Query OK, 0 rows affected (0.02 sec)
+
+(root@localhost) [test]> insert into temp values('abc  ','abc  ');
+Query OK, 1 row affected (0.00 sec)
+
+(root@localhost) [test]> select * from temp;
++------+-------+
+| name | name2 |
++------+-------+
+| abc  | abc   |
++------+-------+
+1 row in set (0.00 sec)
+
+(root@localhost) [test]> select replace(name,' ','*'),replace(name2,' ','*') from temp;
++-----------------------+------------------------+
+| replace(name,' ','*') | replace(name2,' ','*') |
++-----------------------+------------------------+
+| abc                   | abc**                  |
++-----------------------+------------------------+
+1 row in set (0.00 sec)
+(root@localhost) [test]> select * from temp where name = 'abc';
++------+-------+
+| name | name2 |
++------+-------+
+| abc  | abc   |
++------+-------+
+1 row in set (0.00 sec)
+
+(root@localhost) [test]> select * from temp where name2 = 'abc  ';
++------+-------+
+| name | name2 |
++------+-------+
+| abc  | abc   |
++------+-------+
+1 row in set (0.00 sec)
+```
+
+#### Binary与varbinary
+
+```sql
+Binary与varbinary类型和char/varchar类似, 只不过是存储二进制字符.
+```
+
+#### Blob与text类型
+
+```sql
+Blob和Text类型被用来存储大量的数据
+Blob是用来存储二进制的大量数据,其有四种类型,tinyblob,blob,mediumblob,longblob.
+	四种的区别是能存储的数据长度有所不同.
+Text是用来存储字符串的大量数据,其有四种类型,tinytext,text,mediumtext,longtext.
+									256bytes  64KB   16MB       4GB
+	四种的区别是能存储的数据长度有所不同.
+Blob和Text的列字段不能含有默认值.	
+
+定义:
+create table temp(name varchar(100),descp longtext);
+```
+
+#### Enum类型
+
+```sql
+Enum枚举类型是字符串类型,其值是从事先指定的一系列值中选出,适合在某列的取值范围已经固定.
+主要好处为MySQL在存储此类数据是,直接转化成数据存储而不是字符串,可以节省空间,并且在表.frm文件中存储"数字-字符串"之间的对应关系.
+
+定义:
+create table temp(
+    name varchar(40),
+	size enum('x-small','small','medium','large','x-large')
+);
+根据枚举排序时,会基于先后顺序排序'x-small','small','medium','large','x-large'.
+如果想要按照一般的排序规则排序,需要使用field()函数显示指定排序规则
+select size from temp order by field(size,'large','medium','small');
+
+枚举类型字段的取值的增加必须通过alter table命令:
+alter table temp modify size ENUM('x-small','small','medium','large','x-large','xx-large');
+
+枚举类型最多可以有65535个值.
+
+当插入数字到枚举类型字段时,数字会被当做枚举值得第几个值,而插入.
+```
+
+```sql
+# 枚举排序
+(root@localhost) [test]> desc temp;
++-------+----------------------------------------------------+------+-----+---------+-------+
+| Field | Type                                               | Null | Key | Default | Extra |
++-------+----------------------------------------------------+------+-----+---------+-------+
+| name  | varchar(20)                                        | YES  |     | NULL    |       |
+| size  | enum('x-small','small','medium','large','x-large') | YES  |     | NULL    |       |
++-------+----------------------------------------------------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+
+(root@localhost) [test]> select * from temp order by size;
++-------------+--------+
+| name        | size   |
++-------------+--------+
+| polo shirt  | small  |
+| t-shirt     | medium |
+| dress shirt | large  |
++-------------+--------+
+3 rows in set (0.00 sec)
+```
+
+
+
+
+
+### 函数
+
+```sql
+1. 字符函数
+	#length 
+		获取参数的字节个数
+		select length('你好');
+		utf8下一个字母占一个字节, 一个汉字占3个字节
+	#concat 拼接字符串
+    	select concat(last_name,'_',first_name) from user;
+    #upper,lower
+    	select upper('tom');
+    	select lower('TOM');
+    #substr,substring 截取字符串
+    	截取从指定索引出后面所有字符
+    	select substr('abcdef',3);
+    	截取从指定索引出指定字符长度的字符
+    	select substr('abcdef',1,3);
+    #instr
+    	返回子串在字符串中的起始索引
+    	select insrt('abcdefg','efg') ;
+    #trim
+    	去除前后字符
+    	select trim(' 你好 ') as len;
+    	select trim('a' from 'aaaa你好aaJava你好aaaaa') as len;  -- 你好aaJava你好
+    #lpad
+    	用指定的字符实现左填充指定长度
+    	select lpad('你好Java',10,'*') as out_put;  -- ****你好Java
+    	select lpad('你好Java',2,'*') as out_put;   -- 你好
+    #rpad
+    	用指定的字符实现右填充指定长度
+    	select rpad('你好呀',12,'ab') as out_put;  -- 你好呀ababababa
+    #replace
+    	替换
+    	select replace('你好Java','Java','C++') as out_put;  -- 你好C++
+
+2. 数学函数
+	#round 四舍五入
+	select round(1.65) ;   -- 2
+	select round(1.567,2);  -- 1.57
+	
+	#ceil 向上取整 , 返回>=该参数的最小整数
+	select ceil(1.52);  -- 2
+    select ceil(1.12);  -- 2
+    
+    #floor 向下取整, 返回<=该参数的最大整数
+    select floor(-9.99);  -- -10
+	
+	#truncate 截断(小数点)
+	select truncate(1.6999,1);  -- 1.6
+	
+	#mod 取余
+	select mod(10,-3);  -- -1
+	select mod(10,3);  -- 1
+	select mod(-10,-3);  -- -1
+	
+3. 日期函数
+	#now 返回当前系统日期+时间
+	select now();  -- 2021-11-04 14:52:09
+	
+	#curdate 返回当前系统日期
+	select curdate();  -- 2021-11-04
+	
+	#curtime 返回当前系统时间,不包含日期
+	select curtime();  -- 14:53:40
+	
+	#获取指定的部分, 年,月,日,小时,分钟,秒
+	select year(now());
+	select year('2002-01-01');
+	
+	select month(now());
+	select monthname(now());
+	
+	select day(now());
+	select DAYOFWEEK(now());
+	select DAYOFMONTH(now());
+	select DAYOFYEAR(now());
+	
+	#str_to_date: 将日期格式的字符转换成指定格式的日期
+	#  %Y-四位年份  %y-两位年份  %m 月份(01,02) %c 月份(1,2) %d 日(01,02)
+	# %H 小时(24小时制) %h 小时(12小时制) %i 分钟(00,01...59) %s 秒(00,01 ... 59)
+	str_to_date('9-13-1999','%m-%d-%Y')  -- 1999-09-13
+	
+	#date_format 将日期转换字符
+	select last_name,date_format(hirdate,'%m月/%d日 %y年');
+	
+	#datediff 计算时间差
+	select datediff('2021-11-01','2021-11-05');  # -4
+	select datediff('2021-11-11','2021-11-05');  # 6
+	
+4. 其它函数
+	select version();
+	select database();
+	select user();
+	
+5. 流程控制函数
+	#if函数:  if  else 的效果
+	select if(10>5,'大','小');
+	
+	#case函数: switch case的效果
+	case when then else end
+
+```
+
+
+
+### 窗口函数
+
+```sql
+MySQL8.0新增函数,窗口函数又被称为开窗函数,与Oracle窗口函数类似,属于MySQL的一大特点.
+非聚合窗口函数是相对于聚合杉树来说的. 聚合函数是对一组数据计算后返回单个值(即分组),非聚合函数一次只会处理一行数据.窗口聚合杉树在记录上计算某个字段的结果时,可将窗口范围内的数据输入到聚合函数中,并不改变行数.
+
+窗口函数:
+	序号函数:
+		row_number()  -- 排序 1,2,3
+		rank()        -- 排序 1,1,3
+		dense_rank()  -- 排序 1,1,2
+	
+	分布函数:
+		percent_rank() -- (rank-1)/(rows-1)
+		cume_dist()    -- <= 当前rank值得行数 / 总行数
+		
+	前后函数:
+		lag(expr,n)   -- 返回当前行的前n行的expr值
+		lead(expr,n)  -- 放回当前行的后n行的expr的值
+	
+	头尾函数:
+		first_value(expr) -- 返回第一个expr的值
+		last_value(expr)  -- 返回最后一个expr的值
+	
+	其他函数:
+		nth_value(expr,n)  -- 返回第n个expr的值
+		ntile(n)           -- 将有序数据分为n个桶,记录等级数
+```
+
+```sql
+-- row_number(), rank(), dense_rank()
+select dname,ename,salary,
+	   row_number() over(partition by dname order by salary) as rn1,
+	   rank() over(partition by dname order by salary) as rn2,
+	   dense_rank() over(partition by dname order by salary) as rn3
+from employee;
+
+-- sum() over()  每一行逐渐累加
+select dname,ename,salary,
+	   sum(salary) over(partition by dname order by hiredate) as c1
+from employee;
+-- 如果没有加order by 排序语句 默认把分组内的所有数据进行sum操作
+select dname,ename,salary,
+	   sum(salary) over(partition by dname) as c1
+from employee;
+
+-- 指定行累加
+select dname,ename,hiredate,salary,
+	sum(salary) over(partition by dname order by hiredate rows between unbounded preceding and current row) as c1
+from employee;
+-- 前三行累加, 前三行+当前行的和
+select dname,ename,hiredate,salary,
+	sum(salary) over(partition by dname order by hiredate rows between 3 preceding and current row) as c1
+from employee;
+-- 前三行和后一行, 前三行+当前行+后一行的和
+select dname,ename,hiredate,salary,
+	sum(salary) over(partition by dname order by hiredate rows between 3 preceding and 1 following) as c1
+from employee;
+-- 当前行加到最后
+select dname,ename,hiredate,salary,
+	sum(salary) over(partition by dname order by hiredate rows between current row  and unbounded following) as c1
+from employee;
+
+-- 分布函数cume_dist 和 percent_rank
+-- 用途: 分组内小于,等于当前rank值得行数 / 分组内总行数
+-- 应用场景: 查询小于等于当前薪资的比例
+-- rn1 : 小于当前行薪资的行数 / 总行数
+-- rn2 : 同一组中 小于当前行薪资的行数 / 组总行数
+select dname,ename,salary,
+	   cume_dist() over(order by salary) as rn1,
+	   cume_dist() over(partition by dname order by salary) as rn2
+  from employee;	
+  
+-- percent_rank
+-- 用途: 每行按照公式(rank-1)/(rows-1)进行计算.其中,rank为RANK()函数产生的序号,rows为当前窗口的记录总行数
+-- 应用场景: 不常用
+select dname,ename,salary,
+	rank() over(partition by dname order by salary desc) as rn,
+	percent_rank() over(partition by dname order by salary desc) as rn2
+  from employee;
+  
+-- 前n行 函数lag(expr,n) 或后n行 lead(expr,n) 的expr的值
+-- 应用场景: 查询前1名同学的成绩和当前同学成绩的差值
+-- last_1_time : 基于dname分组,然后hiredate排序, 取当前行前一行的hirdate数据,没有则取2000-01-01
+-- last_2_time : 取当前行前两行的hirdate数据,没有则为null
+select 
+	dname,ename,hiredate,salary,
+	lag(hirdate,1,'2000-01-01') over(partition by dname over by hiredate) as last_1_time,
+	lag(hirdate,2) over(partition by dname order by hiredate) as last_2_time
+  from employee;	
+
+-- lead(expr,n)
+select 
+	dname,ename,hiredate,salary,
+	lead(hirdate,1,'2000-01-01') over(partition by dname over by hiredate) as last_1_time,
+	lead(hirdate,2) over(partition by dname order by hiredate) as last_2_time
+  from employee;
+  
+-- 头尾函数
+-- first_value(expr) 和 last_value(expr)
+-- 用途:返回第一个或最后一个expr的值
+-- 应用场景: 截止到当前,按照日期排序查询第一个入职和最后一个入职员工的薪资
+-- 注意,如果不指定order by,则进行排序混乱,会出现错误的结果
+select dname,ename,hiredate,salary,
+	first_value(salary) over(partition by dname order by hiredate) as first,
+	last_value(salary) over(partition by dname order by hiredate) as last
+  from employee;	
+
+-- nth_value()
+-- 用途:返回窗口中第n个expr的值.expr可以是表达式,也可以是列名
+-- 应用场景: 截止到当前薪资,显示每个员工的薪资排名第2或者第3的薪资
+select dname,ename,salary,hiredate,
+	nth_value(salary,2) over(partition by dname order by hiredate) as second_salary,
+	nth_value(salary,3) over(partition by dname order by hiredate) as third_salary
+  from employee;	
+
+-- ntile(n)
+-- 用途:将分区中的有序数据分为n个等级,记录等级数
+-- 应用场景: 将每个部门员工按照入职日期分成3组
+select dname,ename,hiredate,salary,
+	ntile(3) over(partition by dname order by hiredate ) as rn
+  from employee;	
+```
+
+
+
+### 视图
+
+```sql
+-- 创建视图
+create or replace view_name as ...
+-- 修改视图
+create or replace view_name as ...
+或者
+alter view view_name as ...
+
+-- 更新视图
+-- 直接修改视图区更新原表
+-- 视图中的行和基表中的行之间必须具有一对一的关系
+-- 如果包含下列结构中任何一种,那么它就是不可更新的:
+-- 聚合函数, distinct,group by,having,union /union a, 位于选择列表中的子查询,join,from子句中的不可更新视图,where子句中的子查询,引用from子句中的表,仅引用文字值
+
+-- 视图重命名
+rename table view_name to view_newname ;
+
+-- 删除视图
+drop view if exists view_name;
+-- 只会删除视图的定义,不会删除数据
+```
+
+
+
+
+
+### 变量
+
+```sql
+-- 系统变量
+	如果是全局 global , 回话 session , 如果不写, 则默认session.
+	-- 全局变量
+	服务器每次启动将为所有的全局变量赋初始值,针对所有的会话有效,重启无效
+	show global variables;
+	
+	-- 会话变量
+	只针对当前会话有效
+	show session variables;
+	
+	-- 查看满足条件的部分系统变量
+	show global | [session] variables like '%char%';
+	-- 查看指定某个系统变量的值
+	select @@global | [session].系统变量名;
+	
+	-- 为某个系统变量赋值
+	set global|[session] 系统变量名 = 值;
+	set @@global|[session].系统名 = 值;
+	
+-- 自定义变量
+	-- 用户变量
+	作用域: 针对于当前会话有效
+	应用在任何地方 
+	1. 声明并初始化三种方式
+		set @用户变量名=值;
+		set @用户变量名:=值;
+		select @用户变量名:=值;
+	2. 赋值(更新用户变量的值)
+		set @用户变量名=值;
+		set @用户变量名:=值;
+		select @用户变量名:=值;
+	   或
+       	select 字段 into 变量名 from 表; 
+    3. 案例
+    	set @name='zs';
+    	set @age=18;
+    	set @count=1;
+    	-- 将学生总数赋值给变量count
+    	select count(*) into @count from students;
+    4. 查看
+    	select @count;
+    	
+	-- 局部变量
+	作用域: 仅仅在定义它的begin end中有效
+	作用: begin end 中第一句话
+	
+	1. 声明
+		declare 变量名 类型
+		declare 变量名 类型 default 值;
+	2. 赋值
+		set 局部变量名=值;
+		set 局部变量名:=值;
+		select @局部变量名:=值;
+	   或
+       	select 字段 into 局部变量名 from 表;
+    3. 案例
+    	set @m=1;
+    	set @n=2;
+    	set @sum = @m + @n;
+    	select @sum;
+    	
+    	declare m int default 1;
+    	declare n int default 2;
+    	declare sum int;
+    	set sum=m+n;
+    	select sum;
+    	-- 执行会报错, 要放在begin end中
+```
+
+
+
+### 存储过程
+
+一组预先编译好的SQL语句的集合, 理解成批处理语句.
+
+注意: **delimiter** 定义结束符
+
+```sql
+(root@localhost) [test]> delimiter //
+(root@localhost) [test]> select * from students;
+    -> //
++----+--------+------+-----------+
+| id | name   | age  | addres    |
++----+--------+------+-----------+
+|  1 | 张三   |   18 | 武汉市    |
+|  2 | 李四   |   20 | 北京市    |
+|  3 | 王五   |   19 | 长沙市    |
++----+--------+------+-----------+
+3 rows in set (0.00 sec)
+
+(root@localhost) [test]> delimiter ;
+(root@localhost) [test]> select * from students;
++----+--------+------+-----------+
+| id | name   | age  | addres    |
++----+--------+------+-----------+
+|  1 | 张三   |   18 | 武汉市    |
+|  2 | 李四   |   20 | 北京市    |
+|  3 | 王五   |   19 | 长沙市    |
++----+--------+------+-----------+
+3 rows in set (0.00 sec)
+```
+
+<!-- 创建的存储过程和函数在 information_schema.routines 表中有记录 -->
+
+```sql
+(root@localhost) [information_schema]> select routine_name,routine_type from routines where routine_schema='test';
++--------------+--------------+
+| ROUTINE_NAME | ROUTINE_TYPE |
++--------------+--------------+
+| myf          | FUNCTION     |
+| myf2         | FUNCTION     |
+| myf3         | FUNCTION     |
+| myf4         | FUNCTION     |
+| test_if      | FUNCTION     |
+| myadmin      | PROCEDURE    |
+| myadmin2     | PROCEDURE    |
+| myp          | PROCEDURE    |
+| mystu        | PROCEDURE    |
+| mystu2       | PROCEDURE    |
+| mystu3       | PROCEDURE    |
+| mystu4       | PROCEDURE    |
+| mystu5       | PROCEDURE    |
+| myuser       | PROCEDURE    |
+| test_case    | PROCEDURE    |
++--------------+--------------+
+15 rows in set (0.01 sec)
+
+```
+
+**简单使用**
+
+```sql
+-- 定义一个没有返回值 存储过程
+-- 实现: 模糊查询操作
+create procedure mystu(name varchar(20))
+begin
+	if name is null or name = "" then 
+		select * from students;
+	else
+	  select * from students s where s.name like concat('%',name,'%'); 
+	end if;	
+end;
+
+-- 删除存储过程
+drop procedure mystu;
+
+-- 调用存储过程
+call mystu(null);
+call mystu('a');
+
+
+-- 定义一个 有返回值的存储过程
+-- 实现: 模糊查询操作:
+-- in 参数前面的in可以省略不写; out 表示返回值
+-- found_rows() MySQL中定义的一个函数,返回查询结果条数
+create procedure mystu2 (in name varchar(10), out num int(3))
+begin
+	if name is null or name = "" then
+			select * from students;
+	else 
+			select * from students s where s.name like concat('%',name,'%');
+	end if;
+	select found_rows() into num;
+end;
+
+-- 调用存储过程
+-- null 为参数, num为接受返回
+-- select @num 输出返回结果
+call mystu2(null,@num);
+select @num;
+
+call mystu2('a',@aa);
+select @aa;
+```
+
+**语法**
+
+```SQL
+# 创建语法
+create procedure 存储过程名(参数列表)
+begin
+	存储过程体(一组合法的SQL语句)
+end;
+
+注意:
+1. 参数列表包含三部分
+参数模式	参数名		参数类型
+举例:
+in stuname varchar(20)
+
+参数模式:
+in : 该参数可以作为输入, 也就是该参数需要调用方法传入值
+out : 该参数可以作为输出, 也就是该参数可以作为返回值
+inout : 该参数既可以输入又可以作为输出, 也就是该参数既需要传入值, 又可以返回值.
+
+2. 如果存储过程体仅仅只有一句话, begin end 可以省略
+   存储过程体重每条SQL语句结尾必须加分号.
+   存储过程的结尾可以使用delimiter 重新设置
+   delimiter 介绍标记
+   如: delimiter $
+
+# 调用语法
+call 存储过程名(实参列表);
+```
+
+**使用**
+
+```SQL
+#1.空参列表
+#案例: 插入students表中5条记录
+DELIMITER $
+create procedure mystu3 ()
+begin
+		insert into students(name) values ('zs'),('li'),('ww'),('zl'),('wmz');
+end $
+-- 调用
+call stu3();
+```
+
+```sql
+#2.创建存储过程实现,用户是否登录成功
+create procedure myuser(in username varchar(20),in password varchar(20))
+begin
+		declare result int default 0;
+		select count(*) into result
+		  from user 
+		 where user.password = password 
+		   and user.username = username;
+		select if(result>0,'成功','失败') as result;	 
+end
+# 调用
+call myuser('zs','123');
+call myuser('zs','1234');
+```
+
+```sql
+#3. 创建带out模式的存储过程
+#案例: 根据名字返回id
+create procedure mystu4(in name varchar(20),out id int)
+begin
+	select s.id into id from students s where s.name = name;
+end
+
+#调用
+call mystu4('zs',@id);
+select @id;
+
+# 返回多列
+# 根据id 返回名字,年龄,住址
+create procedure mystu5(in id int,out name varchar(10),out age int,out addres varchar(20))
+begin
+	select s.name,s.age,s.addres into name,age,addres
+	  from students s 
+	 where s.id = id;
+end
+# 调用
+call mystu5(1,@name,@age,@addres);
+select @name,@age,@addres;
+```
+
+```sql
+#4. 创建带inout模式参数的存储过程
+#案例1: 传入a和b两个值,最终返回a和b都翻倍并返回
+create procedure myp(inout a int,inout b int)
+begin
+	set a=a*2;
+	set b=b*2;
+end;
+#调用
+set @n=10;
+set @m=20;
+call myp(@n,@m);
+select @m,@n;
+```
+
+```sql
+#一.创建存储过程实现传入用户名和密码,插入到admin表中
+create procedure myadmin(in username varchar(20),in password varchar(20))
+begin
+	insert into admin(admin.username,admin.password) values (username,password);
+end;
+
+#二. 创建存储过程或函数实现传入名字 ,返回 名字 + 年龄 的格式字符串
+create procedure myadmin2(in username varchar(20),out restr varchar(40))
+begin
+	select concat(username,' + ',ifnull(password,'null') into @restr from admin a where a.username = username;
+end
+#调用
+call myadmin2('root',@restr);
+select @restr;
+                  
+#三. 创建存储过程,根据传入的条目和起始索引, 查询表的记录
+create procedure myp(in startIndex int,in size int)
+begin
+	select * from admin limit startIndex,size;
+end;
+#调用
+call myp(0,10);
+```
+
+**删除存储过程**
+
+```
+语法: drop procedure 存储过程名称
+```
+
+**查看存储过程**
+
+```sql
+# 语法
+show create procedure myadmin;
+```
+
+
+
+### 存储函数
+
+MySQL8.0 使用存储函数 先 `set global log_bin_trust_function_creators=1;`
+
+```sql
+区别:
+存储过程: 可以有0个返回,也可以有多个返回,适合做批量插入,批量更新
+存储函数: 有且仅有1个返回, 适合做处理数据后返回一个结果
+
+语法:
+create function 函数名(函数列表) return 返回类型
+begin
+	函数体
+end
+
+# 注意
+1. 参数列表 包含两部分
+参数名	参数类型
+
+2. 函数体: 肯定会有return 语句, 如果没有回报错
+如果return语句没有放在函数体的最后也不报错,但不建议
+
+return 值
+3. 函数体重仅有一句话,则可以省略begin end
+4. 使用delimiter语句设置结束标记
+
+#调用
+select 函数名(参数列表)
+
+#查看函数
+show create function myf;
+
+#删除函数
+drop function myf;
+```
+
+案例
+
+```sql
+#1. 无参有返回
+#案例: 返回公司的员工个数
+create function myf() returns int
+begin
+	declare c int default 0; 
+	select count(*) into c from employees;
+	return c;
+end;
+#调用
+select myf();
+
+#2. 有参有返回
+#案例: 根据名称,返回年龄
+create function myf2(name varchar(20)) returns int
+begin
+	declare resage int default 0;
+	select age into resage from students s where s.name = name;
+	return resage;
+end;
+或者
+create function myf3(name varchar(20)) returns int
+begin
+	set @a=0; # 定义用户变量
+	select age into @a from students s where s.name = name;
+	return @a;
+end;
+select myf3('张三'); 与 select @a; 是一样的结果
+
+#案例
+# 创建函数,实现传入两个float,返回二者之和
+create function myf4(a float,b float) returns float
+begin
+	declare res float default 0;
+	select a+b into res ;  -- 或者 set res=a+b;
+	return res;
+end;
+# 调用
+select myf4(3.1,3.4);
+```
+
+### 流程控制结构
+
+```sql
+顺序结构: 程序从上往下一次执行
+分支结构: 程序从两条或多条路径中选择一条去执行
+循环结构: 程序在满足一定条件的基础上,重复执行一段代码
+```
+
+**分支结构**
+
+```sql
+#分支结构
+#1. if函数
+功能: 实现简单的双分支
+语法: if(表达式1,表达式2,表达式3)
+	 如果1成立,则返回2的值,否则返回3的值
+应用: 任何地方	 
+
+#2. case结构
+功能: 一般用于实现等值判断或用于实现区间判断
+case when then else end case
+
+#3. if结构
+功能: 实现多重分支
+语法:
+    if 条件1 then 语句1;
+elseif 条件2 then 语句2;
+...
+[else 语句n;]
+end if;
+应用: begin end中
+```
+
+```sql
+#案例
+#创建存储过程,根据传入的成绩,来显示等级,比如传入的成绩,显示等级
+create procedure test_case(in score int)
+begin
+	case when score >= 90 and score <= 100 then select 'A';
+		 when score >= 80 then select 'B';
+		 when score >= 60 then select 'C';
+		 else select 'D';
+     end case;		 
+end;
+call test_case(95);
+
+#创建存储函数实现
+create function test_if(score int) returns char
+begin
+	if score >= 90 and score <= 100 then return 'A';
+	elseif score >= 80 then return 'B';
+	elseif score >= 60 then return 'C';
+	else return 'D';
+	end if;
+end;
+select test_if(90);
+```
+
+**循环结构**
+
+```sql
+#分类
+while , loop, repeat
+
+循环控制:
+iterate 类似于 continue 继续,结束本次循环,继续下一次
+leave 类似于 break, 跳出,结束当前所在的循环
+
+#1. while
+语法:
+[标签: ] while 循环条件 do
+	  循环体;
+	  end while [ 标签];
+
+#2. loop
+语法:
+[标签: ] loop
+		 循环体;
+		 end loop [标签];
+可以用来模拟死循环
+
+#3. repeat
+语法:
+[标签: ] repeat
+		循环体;
+	until 结束循环的条件
+    end repeat [标签];
+```
+
+```sql
+#案例: 批量插入,根据次数插入到admin表中多条记录
+#不添加循环控制
+create procedure pro_while(in insertCount int)
+begin
+	declare i int default 1;
+	while i <= insertCount DO
+		insert into admin(username,password) values(concat('Rose',i),'666');
+		set i=i+1;
+	end while;	
+end;
+
+# 添加循环条件
+create procedure test_while1(in insertCount int)
+begin
+	declare i int defalut 0;
+	a:while i <= inserCount DO
+		    set i = i+1;
+			if MOD(i,2) != 0 then iterate a;
+			end if;
+			insert into admin(username,password) values(concat('aaa',i),'123456');
+	end while a;		
+end;
+
+call test_while(100);
+```
+
+```sql
+#向stringcontent表中插入指定个数,随机字符串
+drop table if exists stringcontent;
+create table stringcontent(
+	id int primary key auto_increment,
+    content varchar(20)
+);
+create procedure test_randstr_insert(in insertCount int)
+begin
+	declare i int default 1;#第一循环变量i,表示插入次数
+	declare str varchar(26) default 'abcdefghijklmnopqrstuvwxyz';
+	declare startIndex int default 1; #代表起始索引
+	declare len int default 1; #代表截取的字符长度
+	while i<= insertCount DO
+		set len = floor(rand()*(20-startIndex+1)+1); #产生一个随机整数,代表截取长度1-(26-startIndex+1)
+		set startIndex = floor(rand()*26+1); #产生一个随机的整数,代表起始索引1-26
+		insert into stringcontent(content) values(substr(str,startIndex,len));
+		set i=i+1; # 循环变量更新
+	end while;	
+end;
+```
+
+### 游标
+
+```sql
+Cursor游标用来表示一个数据集.
+游标的声明必须在变量和条件声明之后,在handler声明之前.
+```
+
+
+
+### 触发器
+
+```
+触发器语法四要素:
+1. 监视地点(table)
+2. 监视事件(insert/update/delete)
+3. 触发时间(after/before)
+4. 触发事件(insert/update/delete)
+
+对于一张表来说,触发器就有6种操作(监听事件*触发时间)
+after insert
+after update
+after delete
+before insert
+before update
+before delete
+
+触发器创建于使用
+1.格式
+create trigger 触发器名
+after/before insert/update/delete on 表名
+for each row #这句话在mysql是固定的
+begin
+	sql语句;
+end;
+```
+
+```sql
+# 案例一
+# 数据准备
+# 一张学生 student 表和一张日志表 logger,
+drop table if exists student;
+create table student(
+	id int not null,
+    name varchar(100) default null,
+    age int default null,
+    classes varchar(100) default null,
+    primary key(id)
+);
+
+drop table if exists logger;
+create table logger(
+	id int not null auto_increments,
+    content varchar(255) default null,
+    primary key(id)
+);
+# 在向student新增数据时(之后),向日志logger插入一条数据
+create trigger tri_log after insert on student for each row
+begin
+	insert into logger(content) values('新增成功');
+end;
+# 删除触发器
+drop trigger 触发器名
+
+
+# 创建触发器, 在修改students表后,记录修改前后信息,写入stu_log 表
+delimiter //
+create trigger tri_stu after update on students for each row
+begin
+insert into stu_log(old_name,new_name,old_age,new_age) values(old.name,new.name,old.age,new.age);
+end;
+//
+delimiter ;
+
+update students set name = '赵六' , age = 11 where id = 3;
+
+(root@localhost) [test]> select * from stu_log;
++----+----------+----------+---------+---------+
+| id | old_name | new_name | old_age | new_age |
++----+----------+----------+---------+---------+
+|  1 | 王五     | 赵六     |      19 |      11 |
++----+----------+----------+---------+---------+
+1 row in set (0.00 sec)
+```
+
+
+
+### 文件拷贝
+
+```sql
+1. 数据库的状态
+	1. 关闭
+	2. 只读 (flush tables with read look)
+2. 字节序
+	Windows平台和Linux平台都是小字节序(查询Oracle数据库的视图V&TRANSPORTABLE_PLATFORM)
+3. 表名对大小写敏感的问题
+	Linux区分
+4. 目标数据库的MySQL版本号大于或等于源数据库的版本号,不同版本号之间迁移不支持crash recovery.
+```
+
+```markdown
+系统参数lower_case_table_names
+1.如果设置为0,表名将按指定方式存储,并且比较区分大小写.
+2.如果设置为1,表名在磁盘上以小写形式存储,比较不区分大小写.
+3.如果设置为2,表名按照给定的格式存储,但以小写形式进行比较.
+此选项也适合于数据库名称和表别名.
+这个参数在不同的平台上有不同的默认值:
+1.在Windows上,默认值为1,不支持0.
+2.在macOS上,默认值为2.
+3.在Linux上,默认值为0,不支持2.
+
+在MySQL8之前可以通过配置文件修改这个参数,修改后重启数据库生效. 8.0之后的版本,只允许在数据库初始化时指定,之后就不允许修改了.
+```
+
+从Linux平台迁移到Windows平台
+
+```markdown
+Linux平台系统参数lower_case_table_names默认是0,移到Windows平台因为Windows不区分大小写而失败.
+改成对大小写敏感也启动不了,这是自然,windows不支持文件名区分大小写.
+```
+
+从Windows平台迁移到Linux平台
+
+```markdown
+把属主修改成mysql:
+[root@localhost mysql]# chown -R mysql. ../mysql2
+以默认方式启动失败:
+\# mysql --no-default --datadir=/var/lib/mysql2 --user=mysql --log-error-verbosity=3
+设置lower_case_table_names=1启动成功:
+\# mysql --no_default --datadir=/var/lib/mysql2 --user=mysql --log-error-verbosity=3 --lower_case_table_names=1
+注意日志文件的格式: Windows \  Linux /
+```
+
+| 源平台  | 目标平台 | MySQL版本 | 是否可拷贝数据文件 |
+| ------- | -------- | --------- | ------------------ |
+| Windows | Linux    | >8.0      | 可以               |
+| Linux   | Windows  | >8.0      | 不行               |
+| Windows | Linux    | <8.0      | 可以               |
+| Linux   | Windows  | <8.0      | 可以               |
+
+<!-- 这里列举的是默认设置,如果在创建数据库的时候再Linux平台上设置--lower_case_table_names=1,在MySQL8上也可以把Linux平台上的数据拷贝到Windows平台 -->
+
+
+
+### 5种配置参数方法
+
+```sql
+MySQL有5种配置参数方法,优先级从低到高依次是:
+1. 预编译的参数默认值
+2. 配置文件里的参数
+3. 命令行里的参数
+4. 持久化的配置参数
+5. 运行时动态设置参数
+和
+使用show 命令和在视图里查询参数值.
+设置参数的注意事项: 全局和回话级参数,静态赫尔动态参数等.
+
+帮助信息: mysqld --verbose --help 和 mysql --help
+```
+
+```markdown
+预编译参数的默认值
+下面的目录是查询预编译参数默认值:
+$ mysqld --no-defaults --verbose --help
+下面的命令是查询读取了配置文件后的参数值:
+$ mysqld --verbose --help
+这两种查询方法结果可能是不同的.例如:
+$ mysqld --no-defaults --verbose --help|grep '^secure-file'
+
+$ mysqld --verbose --help|grep '^secure-file'
+
+$ grep sercure_file /etc/my.cnf
+```
+
+```markdown
+配置文件的内容分组
+使用配置文件进行设置比在命令行上设置更方便,而且复杂选项不易出错,还可以通过查看配置文件以在一个位置查看服务器总体配置.
+配置文件以分组进行组织,每个组前面都有一个被方括号围住的组名,通常组名是要管理的程序的类别或名称.MySQL程序对应的组名可以程序的帮助信息中查到,mysqld查看帮助信息要加--verbose. 例如:
+# mysql --help | grep "following groups"
+The following groups are read: mysql client
+# mysqladmin --help | grep "following groups"
+The following groups are read: mysqladmin client
+# mysqldump --help | grep "following groups"
+The following groups are read: mysqldump client
+# mysqld --verbose --help | grep "following groups"
+The following groups are read: mysqld server mysqld-8.0
+```
+
+```shell
+# mysqld 将要读取的参数
+[root@centos_04 ~]# mysqld --print-defaults
+/usr/local/mysql-8.0.24-linux-glibc2.12-x86_64/bin/mysqld would have been started with the following arguments:
+--port=3306 --basedir=/usr/local/mysql --datadir=/mydata/mysql_data --log_error=error.log --secure-file-priv=/ 
+
+[root@centos_04 ~]# my_print_defaults mysqld
+--port=3306
+--basedir=/usr/local/mysql
+--datadir=/mydata/mysql_data
+--log_error=error.log
+--secure-file-priv=/
+
+# mysql 将读取的参数
+[root@centos_04 ~]# my_print_defaults mysql
+--prompt=(\u@\h) [\d]>\_
+# client 端参数
+[root@centos_04 ~]# my_print_defaults client
+--user=root
+--password=*****
+
+```
+
+```markdown
+读取配置顺序
+RedHat Linux平台
+# mysqld --verbose --help | grep 'Default options' -A 1
+Default options are read from the following files in the given order:
+/etc/my.cnf /etc/mysql/my.cnf /usr/local/mysql/etc/my.cnf ~/.my.cnf
+
+Debian Linux平台:
+/etc/my.cnf/etc/mysql/my.cnf ~/.my.cnf
+
+Windows平台:
+c:\Windows\my.ini C:\Windows\my.cnf C:\my.ini C:\Program Files\MySQL\MySQLSERVER8.0\my.ini C:\Program Files\MySQL\MySQL Server8.0\my.cnf
+```
+
+```shell
+# 设置配置文件的效果1
+当配置文件中没有设置最大连接数(max_connections)时:
+(root@localhost) [(none)]> select @@max_connections;
++-------------------+
+| @@max_connections |
++-------------------+
+|               151 |
++-------------------+
+1 row in set (0.01 sec)
+
+参数来源是编译的: COMPILED
+(root@localhost) [(none)]> select variable_name,variable_source,variable_path from performance_schema.variables_info where variable_name='max_connections';
++-----------------+-----------------+---------------+
+| variable_name   | variable_source | variable_path |
++-----------------+-----------------+---------------+
+| max_connections | COMPILED        |               |
++-----------------+-----------------+---------------+
+1 row in set (0.02 sec)
+```
+
+```shell
+# 设置配置文件的效果2
+在/etc/my.cnf配置文件,设置max_connetions为1000:
+(root@localhost) [(none)]> select @@max_connections;
++-------------------+
+| @@max_connections |
++-------------------+
+|              1000 |
++-------------------+
+1 row in set (0.00 sec)
+
+参数来源是global, 是从配置文件中读取的
+(root@localhost) [(none)]> select variable_name,variable_source,variable_path from performance_schema.variables_info where variable_name='max_connections';
++-----------------+-----------------+---------------+
+| variable_name   | variable_source | variable_path |
++-----------------+-----------------+---------------+
+| max_connections | GLOBAL          | /etc/my.cnf   |
++-----------------+-----------------+---------------+
+1 row in set (0.01 sec)
+```
+
+```shell
+# 设置配置文件的效果3
+保持原来的设置不变的情况下,再在/usr/etc/my.cnf配置文件中,设置max_connections为1001:
+
+```
+
+查询起作用的参数文件
+
+```shell
+有时候我们不知道到底哪个文件在起作用,可以使用下面的目录进行查询:
+mysql> select variable_path,variable_source,count(*) from performance_schema.variables_info where length(variable_path)!=0 group by variable_path,variable_source;
+```
+
+```shell
+# 在命令行里设置参数
+# mysqld --max_connections=1002 --user=mysql &
+[root@centos_04 ~]# mysqld --max_connections=1002 --user=mysql &
+[1] 7026
+
+(root@localhost) [(none)]> select @@max_connections;
++-------------------+
+| @@max_connections |
++-------------------+
+|              1002 |
++-------------------+
+1 row in set (0.00 sec)
+
+参数来源 命令行
+(root@localhost) [(none)]> select variable_name,variable_source,variable_path from performance_schema.variables_info where variable_name='max_connections';
++-----------------+-----------------+---------------+
+| variable_name   | variable_source | variable_path |
++-----------------+-----------------+---------------+
+| max_connections | COMMAND_LINE    |               |
++-----------------+-----------------+---------------+
+1 row in set (0.01 sec)
+
+```
+
+```shell
+# 持久化参数
+在系统参数设置时,一个容易犯的错误是在MySQL运行时修改了参数值,但没有同时修改参数文件里面的配置,当MySQL重新启动后,参数文件里的旧值生效,之前的修改丢掉了.在MySQL8里,MySQL退出了让参数持久化的命令,可以让在联机时修改的系统参数在重新启动后仍然生效,例如:
+mysql> set persist max_connections=1004;
+或者
+mysql> set @@persist.max_connections=1004;
+如果想让系统参数在本次MySQL运行时不生效,只是在下次启动生效,可以使用下面的命令:
+mysql> set persist_only back_log=100;
+或者
+mysql> set @@persist_only.back_log=100;
+
+持久化的系统参数以JSON格式保存在数据目录的mysqld-auto.cnf文件中,
+例如:
+$ cat /var/lib/mysql/mysqld-auto.cnf
+{"Version":1,"mysql_server":{"max_connections":{"value":"1004","Metadata":{"Timestamp":1635240626601155,"User":"root","Host":"localhost"}}}}
+可以通过reset persist命令来清除mysqld-auto.cnf文件中的所有配置,也可以通过reset persist 接参数名的方式来清除某个指定的配置参数.
+
+(root@localhost) [(none)]> set persist max_connections=1003;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [(none)]> select * from performance_schema.persisted_variables;
++-----------------+----------------+
+| VARIABLE_NAME   | VARIABLE_VALUE |
++-----------------+----------------+
+| max_connections | 1003           |
++-----------------+----------------+
+1 row in set (0.00 sec)
+
+(root@localhost) [(none)]> reset persist;
+Query OK, 0 rows affected (0.00 sec)
+
+(root@localhost) [(none)]> select * from performance_schema.persisted_variables;
+Empty set (0.00 sec)
+```
+
+```shell
+# 持久化的系统参数的视图
+查询持久化的系统参数的信息如下:
+mysql> select * from performance_schema.persisted_variables;
++-----------------+----------------+
+| VARIABLE_NAME   | VARIABLE_VALUE |
++-----------------+----------------+
+| max_connections | 1003           |
++-----------------+----------------+
+1 row in set (0.00 sec)
+
+(root@localhost) [(none)]> select * from performance_schema.persisted_variables;
++-----------------+----------------+
+| VARIABLE_NAME   | VARIABLE_VALUE |
++-----------------+----------------+
+| max_connections | 1004           |
++-----------------+----------------+
+1 row in set (0.01 sec)
+
+(root@localhost) [(none)]> exit
+Bye
+[root@centos_04 ~]# cat /mydata/mysql_data/mysqld-auto.cnf 
+{ "Version" : 1 , "mysql_server" : { "max_connections" : { "Value" : "1004" , "Metadata" : { "Timestamp" : 1640163438229173 , "User" : "root" , "Host" : "localhost" } } } }[root@centos_04 ~]# 
+
+```
+
+```shell
+运行时动态设置参数
+1. 全局级参数影响服务器的整体操作,设置命令: set global variable_name或set @@global.variable_name.
+2. 会话级参数影响当前单个客户端连接,设置命令: set session variable_name或set @@session.variable_name, session可以省略.
+
+配置参数范围示例:
+1. 仅全局级: innodb缓冲区池大小,最大连接数等.
+2. 同时全局级和会话级: 排序缓冲区大小,连接缓冲区大小等.
+3. 仅会话级: 时间戳(timestamp),错误计数(error_count)等.
+
+有些参数只能是全局级,同样的有些参数只能是会话级的,例如:
+只能是全局级的参数在会话级设置会出错:
+(root@localhost) [(none)]> set log_error_verbosity=2;
+ERROR 1229 (HY000): Variable 'log_error_verbosity' is a GLOBAL variable and should be set with SET GLOBAL
+
+只能是会话级的参数在全局级设置也会出错:
+(root@localhost) [(none)]> set global tiemstamp=1653239117;
+ERROR 1193 (HY000): Unknown system variable 'tiemstamp'
+```
+
+
+
+```shell
+# 查询参数值 三种方法
+mysql> show [global|session] variables like '%%'; -- 默认是session
+参数可以使用%或_用like进行匹配
+
+单个参数可以使用select查询:
+mysql> select @@max_connections;  -- 可以在变量前面加上session.或者global.
+
+在视图里查询使用如下命令:
+select * from performance_schema.global_variables where variable_name like '%max_connection%';
+```
+
+
+
+
+
+### 
+
+
+
+
+
+
